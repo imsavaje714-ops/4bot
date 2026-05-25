@@ -859,6 +859,7 @@ async def handle_payment(update, context, user_id, text):
         else:
             await update.message.reply_text("⚠️ خطا در ثبت درخواست", reply_markup=get_main_keyboard(await is_user_agent(user_id)))
             user_states.pop(user_id, None)
+        return
     
     elif text == "💳 پرداخت از موجودی":
         balance = await get_user_balance(user_id)
@@ -879,13 +880,14 @@ async def handle_payment(update, context, user_id, text):
                 await update.message.reply_text("⚠️ خطا در کسر موجودی", reply_markup=get_main_keyboard(await is_user_agent(user_id)))
         else:
             await update.message.reply_text(f"❌ موجودی کافی نیست!\nموجودی: {format_price(balance)}\nمورد نیاز: {format_price(amount)}", reply_markup=get_payment_method_keyboard(False))
-            return
         user_states.pop(user_id, None)
+        return
     
     elif text == "↩️ بازگشت به منو":
         is_agent_user = await is_user_agent(user_id)
         await update.message.reply_text("🌐 منوی اصلی:", reply_markup=get_main_keyboard(is_agent_user))
         user_states.pop(user_id, None)
+        return
 
 async def process_receipt(update, context, user_id, payment_id):
     payment = await db_execute("SELECT user_id, amount, type, description, status FROM payments WHERE id = %s", (payment_id,), fetchone=True)
@@ -1497,18 +1499,20 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = user_states.get(user_id)
     
     # هندلرهای فیش (عکس)
-    if update.message.photo and state and state.startswith("awaiting_receipt_"):
-        payment_id = int(state.split("_")[2])
-        await process_receipt(update, context, user_id, payment_id)
-        return
-    if update.message.photo and state and state.startswith("awaiting_balance_receipt_"):
-        payment_id = int(state.split("_")[3])
-        await process_receipt(update, context, user_id, payment_id)
-        return
-    if update.message.photo and state and state.startswith("awaiting_agent_receipt_"):
-        payment_id = int(state.split("_")[3])
-        await process_receipt(update, context, user_id, payment_id)
-        return
+    if update.message.photo:
+        if state and state.startswith("awaiting_receipt_"):
+            payment_id = int(state.split("_")[2])
+            await process_receipt(update, context, user_id, payment_id)
+            return
+        if state and state.startswith("awaiting_balance_receipt_"):
+            payment_id = int(state.split("_")[3])
+            await process_receipt(update, context, user_id, payment_id)
+            return
+        if state and state.startswith("awaiting_agent_receipt_"):
+            payment_id = int(state.split("_")[3])
+            await process_receipt(update, context, user_id, payment_id)
+            return
+    
     if update.message.document and state == "awaiting_restore":
         await handle_restore(update, context)
         return
@@ -1659,7 +1663,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text in ["⭐️ اشتراک اکونومی ⭐️", "💎 اشتراک سوپر فست 💎"]:
         await handle_buy_subscription(update, context, user_id, text)
     else:
-        await handle_buy_subscription(update, context, user_id, text)
+        # اگر هیچکدام از موارد بالا نبود، ممکن است کاربر تعداد وارد کرده باشد
+        if state and state.startswith("awaiting_quantity_"):
+            await handle_quantity(update, context, user_id, state, text)
+        elif state and state.startswith("awaiting_coupon_"):
+            await handle_coupon(update, context, user_id, state, text)
+        elif state and state.startswith("awaiting_payment_"):
+            await handle_payment(update, context, user_id, text)
+        else:
+            await handle_buy_subscription(update, context, user_id, text)
 
 # ==================== ثبت هندلرها ====================
 application.add_handler(CommandHandler("start", start_with_param))
