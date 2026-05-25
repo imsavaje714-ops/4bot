@@ -714,7 +714,8 @@ async def start_with_param(update, context):
             if invited_by != update.effective_user.id:
                 context.user_data["invited_by"] = invited_by
         except:
-            pass    await start(update, context)
+            pass
+    await start(update, context)
 
 async def check_membership_callback(update, context):
     query = update.callback_query
@@ -1041,10 +1042,10 @@ async def admin_callback(update, context):
             await query.edit_message_text("⚠️ پرداخت یافت نشد")
             return
         
-        # فقط دکمه‌ها را حذف کن
+        # فقط دکمه‌ها را حذف کن (بدون ویرایش متن - چون پیام عکس است)
         await query.edit_message_reply_markup(reply_markup=None)
         
-        # ارسال پیام جدید
+        # ارسال پیام جدید به جای ویرایش متن عکس
         await context.bot.send_message(
             chat_id=update.effective_user.id,
             text=f"✅ پرداخت {payment_id} تایید شد"
@@ -1075,6 +1076,7 @@ async def admin_callback(update, context):
         payment_id = int(data.split("_")[1])
         payment = await db_execute("SELECT user_id FROM payments WHERE id = %s", (payment_id,), fetchone=True)
         
+        # فقط دکمه‌ها را حذف کن
         await query.edit_message_reply_markup(reply_markup=None)
         
         if payment:
@@ -1542,7 +1544,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states.pop(user_id, None)
         return
     
-    # ========== اولویت 4: وضعیت‌های خرید اشتراک (فقط اگر state وجود دارد) ==========
+    # ========== اولویت 4: وضعیت‌های خرید اشتراک ==========
     if state:
         if state.startswith("awaiting_quantity_"):
             await handle_quantity(update, context, user_id, state, text)
