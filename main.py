@@ -34,19 +34,18 @@ BANK_CARD = "6219861847420634"
 BANK_OWNER = "عرفانی نیا"
 
 # قیمت‌ها (قیمت‌های جدید با تفکیک نوع اشتراک)
-# نوع اشتراک: "economy" (اکونومی) و "superfast" (سوپر فست)
-PRICE_PER_GB_ECONOMY = 169000      # قیمت هر گیگ اکونومی برای کاربر عادی
-PRICE_PER_GB_SUPERFAST = 229000    # قیمت هر گیگ سوپر فست برای کاربر عادی
+PRICE_PER_GB_ECONOMY = 169000
+PRICE_PER_GB_SUPERFAST = 229000
 
 # قیمت‌های ویژه نمایندگان
-AGENT_PRICE_PER_GB_ECONOMY = 153000     # قیمت هر گیگ اکونومی برای نماینده
-AGENT_PRICE_PER_GB_SUPERFAST = 212000   # قیمت هر گیگ سوپر فست برای نماینده
+AGENT_PRICE_PER_GB_ECONOMY = 153000
+AGENT_PRICE_PER_GB_SUPERFAST = 212000
 
 # مبلغ نمایندگی
 AGENT_REGISTRATION_FEE = 4000000
 
 CONFIG_NAME = "کانفیگ"
-AVAILABLE_VOLUMES = list(range(1, 11))  # 1 تا 10 گیگ
+AVAILABLE_VOLUMES = list(range(1, 11))
 AVAILABLE_SUBSCRIPTION_TYPES = ["economy", "superfast"]
 
 RENDER_BASE_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("RAILWAY_STATIC_URL") or "https://OnePercentVPN12.railway.app"
@@ -83,20 +82,18 @@ def format_price(price):
     return persian_number(f"{price:,}") + " تومان"
 
 def get_price_for_volume(volume: int, quantity: int = 1, is_agent: bool = False, subscription_type: str = "economy") -> int:
-    """محاسبه قیمت بر اساس حجم، تعداد، وضعیت نمایندگی و نوع اشتراک"""
     if subscription_type == "superfast":
         if is_agent:
             return volume * quantity * AGENT_PRICE_PER_GB_SUPERFAST
         else:
             return volume * quantity * PRICE_PER_GB_SUPERFAST
-    else:  # economy
+    else:
         if is_agent:
             return volume * quantity * AGENT_PRICE_PER_GB_ECONOMY
         else:
             return volume * quantity * PRICE_PER_GB_ECONOMY
 
 def get_display_text_for_volume(volume: int, is_agent: bool = False, subscription_type: str = "economy") -> str:
-    """دریافت متن نمایشی برای حجم و نوع اشتراک"""
     price = get_price_for_volume(volume, 1, is_agent, subscription_type)
     
     if subscription_type == "economy":
@@ -110,7 +107,6 @@ def get_display_text_for_volume(volume: int, is_agent: bool = False, subscriptio
         return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)}"
 
 def get_subscription_type_keyboard():
-    """کیبورد انتخاب نوع اشتراک"""
     keyboard = [
         [KeyboardButton("⭐️ اشتراک اکونومی ⭐️")],
         [KeyboardButton("💎 اشتراک سوپر فست 💎")],
@@ -119,7 +115,6 @@ def get_subscription_type_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_admin_config_keyboard():
-    """کیبورد مدیریت کانفیگ برای ادمین با تفکیک نوع اشتراک"""
     keyboard = [
         [KeyboardButton("➕ اضافه کردن کانفیگ اکونومی")],
         [KeyboardButton("➕ اضافه کردن کانفیگ سوپر فست")],
@@ -130,7 +125,6 @@ def get_admin_config_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_volume_selection_keyboard():
-    """کیبورد انتخاب حجم برای ادمین (۱ تا ۱۰ گیگ)"""
     keyboard = []
     row = []
     for i in range(1, 11):
@@ -646,10 +640,12 @@ def parse_configs_from_text(text: str) -> List[str]:
             configs.append(line)
     return configs
 
-def extract_volume_from_display_text(text: str) -> Tuple[Optional[int], Optional[str]]:
+def extract_volume_and_type_from_display_text(text: str) -> Tuple[Optional[int], Optional[str]]:
     """استخراج حجم و نوع اشتراک از متن دکمه"""
+    # فرمت: "۱ گیگ اکونومی ⭐️ | ۱۶۹,۰۰۰ تومان" یا "۱ گیگ سوپر فست 💎 | ۲۲۹,۰۰۰ تومان"
     for volume in range(1, 11):
-        if text.startswith(f"{persian_number(volume)} گیگ"):
+        volume_text = f"{persian_number(volume)} گیگ"
+        if text.startswith(volume_text):
             if "اکونومی" in text:
                 return volume, "economy"
             elif "سوپر فست" in text:
@@ -841,7 +837,6 @@ async def ban_user_from_bot(user_id: int) -> bool:
         return False
 
 async def unban_user_from_bot(user_id: int) -> bool:
-    """رفع بن کاربر و بازیابی دسترسی او"""
     try:
         await db_execute("DELETE FROM banned_users WHERE user_id = %s", (user_id,))
         
@@ -1083,11 +1078,9 @@ async def get_pending_agent_payments() -> List[Dict]:
 
 # ==================== توابع بکاپ ====================
 
-# ایجاد scheduler برای بکاپ خودکار
 scheduler = AsyncIOScheduler(timezone=pytz.timezone('Asia/Tehran'))
 
 async def backup_config_pool_only() -> Dict:
-    """گرفتن بکاپ فقط از استخر کانفیگ‌ها (config_pool) - فقط کانفیگ‌های فروخته نشده"""
     try:
         configs = await db_execute(
             "SELECT id, volume, config_text, is_sold, created_by, created_at, subscription_type FROM config_pool WHERE is_sold = FALSE ORDER BY id",
@@ -1120,7 +1113,6 @@ async def backup_config_pool_only() -> Dict:
         return None
 
 async def send_backup_to_admins(backup_file_path: str, backup_type: str = "daily"):
-    """ارسال فایل بکاپ به همه ادمین‌ها"""
     if not os.path.exists(backup_file_path):
         logging.error(f"فایل بکاپ وجود ندارد: {backup_file_path}")
         return False
@@ -1152,7 +1144,6 @@ async def send_backup_to_admins(backup_file_path: str, backup_type: str = "daily
     return success_count > 0
 
 async def create_and_send_backup():
-    """گرفتن بکاپ و ارسال به ادمین‌ها (تسک روزانه)"""
     try:
         tehran_now = datetime.now(pytz.timezone('Asia/Tehran'))
         logging.info(f"🕐 شروع تسک بکاپ روزانه در {tehran_now}")
@@ -1185,12 +1176,10 @@ async def create_and_send_backup():
         
         volume_text = "\n".join([f"🔹 {persian_number(v['volume'])} گیگ {v['type_name']}: {persian_number(v['count'])} عدد" for v in volumes.values()])
         
-        # ایجاد فایل موقت
         temp_file = f"/tmp/config_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         with open(temp_file, 'w', encoding='utf-8') as f:
             f.write(backup_json)
         
-        # ارسال به ادمین‌ها
         for admin_id in ADMIN_IDS:
             try:
                 with open(temp_file, 'rb') as f:
@@ -1210,7 +1199,6 @@ async def create_and_send_backup():
             except Exception as e:
                 logging.error(f"خطا در ارسال بکاپ به ادمین {admin_id}: {e}")
         
-        # پاک کردن فایل موقت
         os.remove(temp_file)
         logging.info(f"✅ بکاپ روزانه با موفقیت انجام شد - {persian_number(total_configs)} کانفیگ")
         
@@ -1224,7 +1212,6 @@ async def create_and_send_backup():
                 pass
 
 async def start_backup_scheduler():
-    """شروع کردن scheduler برای بکاپ خودکار"""
     scheduler.add_job(
         create_and_send_backup,
         trigger=CronTrigger(hour=23, minute=59),
@@ -1235,10 +1222,7 @@ async def start_backup_scheduler():
     scheduler.start()
     logging.info("✅ Scheduler بکاپ راه‌اندازی شد - هر شب ساعت ۲۳:۵۹ بکاپ گرفته می‌شود")
 
-# ==================== دستورات بکاپ ====================
-
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دستور تهیه بکاپ فوری از استخر کانفیگ‌ها (فقط ادمین)"""
     if not await admin_only(update, context, None):
         return
     
@@ -1427,7 +1411,6 @@ async def stats_command(update, context):
     config_stats = await get_config_pool_stats()
     banned = await db_execute("SELECT COUNT(*) FROM banned_users", fetchone=True)
     
-    # تفکیک آمار کانفیگ‌ها بر اساس نوع
     eco_available = sum([s['available'] for s in config_stats['by_volume'] if s['subscription_type'] == 'economy'])
     super_available = sum([s['available'] for s in config_stats['by_volume'] if s['subscription_type'] == 'superfast'])
     
@@ -1483,7 +1466,6 @@ async def remove_user_command(update, context):
     user_states[update.effective_user.id] = "awaiting_ban_user_id"
 
 async def unban_user_command(update, context):
-    """دستور رفع بن کاربر توسط ادمین"""
     if not await admin_only(update, context, None):
         return
     
@@ -1527,7 +1509,6 @@ async def handle_remove_user(update, context, user_id, text):
     user_states.pop(user_id, None)
 
 async def handle_unban_user(update, context, user_id, text):
-    """هندلر رفع بن کاربر"""
     try:
         target_id = int(text.strip())
         
@@ -1797,7 +1778,6 @@ async def handle_search_by_username(update, context, user_id, text):
         await update.message.reply_text(response, reply_markup=get_admin_main_keyboard())
     user_states.pop(user_id, None)
 
-# ---------- دستورات ادمین برای مدیریت ----------
 async def coupon_command(update, context):
     if not await admin_only(update, context, None):
         return
@@ -1840,7 +1820,6 @@ async def bank_management_command(update, context):
     await update.message.reply_text("💳 پنل مدیریت کارت بانکی:", reply_markup=get_bank_management_keyboard())
     user_states[update.effective_user.id] = "awaiting_bank_management_action"
 
-# ---------- هندلرهای ادمین برای مدیریت ----------
 async def handle_admin_management(update, context, user_id, text):
     if text == "➕ اضافه کردن ادمین جدید":
         await update.message.reply_text("🆔 آیدی عددی کاربر جدید را وارد کنید:")
@@ -2331,7 +2310,7 @@ async def handle_subscription_type(update, context, user_id, text):
         await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_main_keyboard(is_agent))
 
 async def handle_subscription_plan(update, context, user_id, text, subscription_type):
-    selected_volume, selected_type = extract_volume_from_display_text(text)
+    selected_volume, selected_type = extract_volume_and_type_from_display_text(text)
     
     if selected_volume and selected_type == subscription_type:
         volume = selected_volume
@@ -2691,7 +2670,6 @@ async def handle_agent_payment_method(update, context, user_id, text):
         await update.message.reply_text("⚠️ خطا در پردازش درخواست.", reply_markup=get_main_keyboard(False))
         user_states.pop(user_id, None)
 
-# ---------- کالبک هندلر ----------
 async def admin_callback_handler(update, context):
     query = update.callback_query
     await query.answer()
@@ -2784,7 +2762,6 @@ async def admin_callback_handler(update, context):
         except:
             pass
 
-# ---------- هندلرهای عمومی ----------
 async def handle_normal_commands(update, context, user_id, text):
     if not await is_bot_available_for_user(user_id):
         await update.message.reply_text("🔴 ربات در حال حاضر برای کاربران عادی غیرفعال است.")
@@ -2799,9 +2776,6 @@ async def handle_normal_commands(update, context, user_id, text):
         await update.message.reply_text("💳 نوع اشتراک خود را انتخاب کنید:", reply_markup=get_subscription_type_keyboard())
     elif text in ["⭐️ اشتراک اکونومی ⭐️", "💎 اشتراک سوپر فست 💎"]:
         await handle_subscription_type(update, context, user_id, text)
-    elif any(text.startswith(f"{persian_number(v)} گیگ اکونومی") for v in range(1, 11)) or any(text.startswith(f"{persian_number(v)} گیگ سوپر فست") for v in range(1, 11)):
-        # اینجا توسط state هندل می‌شود
-        pass
     elif text == "💰 موجودی":
         await show_balance(update, context, user_id)
     elif text == "🆘 پشتیبانی":
@@ -2831,9 +2805,13 @@ async def handle_normal_commands(update, context, user_id, text):
     elif text == "👨‍💼 درخواست نمایندگی":
         await handle_agent_registration(update, context, user_id)
     else:
-        await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_main_keyboard(is_agent))
+        # بررسی دکمه‌های خرید اشتراک
+        volume, sub_type = extract_volume_and_type_from_display_text(text)
+        if volume and sub_type:
+            await handle_subscription_plan(update, context, user_id, text, sub_type)
+        else:
+            await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_main_keyboard(is_agent))
 
-# ---------- هندلر اصلی پیام‌ها ----------
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user:
         return
@@ -2842,7 +2820,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text if update.message.text else ""
     state = user_states.get(user_id)
     
-    # بررسی اینکه پیام عکس یا فایل است برای هندلرهای خاص
     if update.message.document and state == "awaiting_restore_file":
         await handle_restore_file(update, context)
         return
@@ -2858,7 +2835,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # هندلرهای ادمین
     if is_admin(user_id):
-        # مدیریت پیام همگانی
         if state == "awaiting_notification_type":
             await handle_notification_type(update, context, user_id, text)
             return
@@ -2868,18 +2844,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if state in ["awaiting_notification_text_all", "awaiting_notification_text_agents"] or (state and state.startswith("awaiting_notification_text_single_")):
             await handle_notification_text(update, context, user_id, state, text)
             return
-        
-        # مدیریت کاربران - حذف کاربر (بن)
         if state == "awaiting_ban_user_id":
             await handle_remove_user(update, context, user_id, text)
             return
-        
-        # مدیریت کاربران - رفع بن کاربر
         if state == "awaiting_unban_user_id":
             await handle_unban_user(update, context, user_id, text)
             return
-        
-        # مدیریت کانفیگ
         if state == "awaiting_admin_config_action":
             await handle_admin_config_action(update, context, user_id, text)
             return
@@ -2943,8 +2913,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if state == "awaiting_set_agent_user_id":
             await handle_set_agent(update, context, user_id, text)
             return
-        
-        # دستورات ویژه ادمین در منوی اصلی
         if text == "⚙️ مدیریت ادمین":
             await admin_management_command(update, context)
             return
@@ -2964,7 +2932,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("🔴 ربات در حال حاضر برای کاربران عادی غیرفعال است.")
         return
     
-    # وضعیت‌های مربوط به کاربران عادی
     if state and state.startswith("awaiting_subscription_receipt_"):
         payment_id = int(state.split("_")[-1])
         await process_payment_receipt(update, context, user_id, payment_id, "خرید اشتراک")
@@ -3018,9 +2985,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await handle_normal_commands(update, context, user_id, text)
 
-# ---------- هندلر ریستور ----------
 async def restore_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دستور بازیابی اطلاعات از بکاپ (فقط کانفیگ‌ها)"""
     if not await admin_only(update, context, None):
         return
     
@@ -3033,7 +2998,6 @@ async def restore_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[update.effective_user.id] = "awaiting_restore_file"
 
 async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """هندلر دریافت فایل بکاپ و بازیابی"""
     user_id = update.effective_user.id
     
     if not is_admin(user_id):
@@ -3063,7 +3027,6 @@ async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         await update.message.reply_text(f"🔄 در حال بازیابی {persian_number(len(configs_list))} کانفیگ...")
         
-        # پاک کردن کانفیگ‌های موجود
         await db_execute("DELETE FROM config_pool")
         
         success_count = 0
@@ -3114,7 +3077,6 @@ application.add_handler(CommandHandler("bank", bank_management_command))
 application.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), message_handler))
 application.add_handler(CallbackQueryHandler(admin_callback_handler))
 
-# ---------- webhook ----------
 @app.post(WEBHOOK_PATH)
 async def telegram_webhook(request: Request):
     try:
@@ -3126,10 +3088,8 @@ async def telegram_webhook(request: Request):
         logging.error(f"Error in webhook: {e}")
         return {"ok": False, "error": str(e)}
 
-# ---------- متغیر برای کنترل تسک دوره‌ای ----------
 periodic_task = None
 
-# ---------- lifecycle ----------
 @app.on_event("startup")
 async def on_startup():
     global periodic_task
@@ -3142,7 +3102,6 @@ async def on_startup():
         logging.info(f"✅ Webhook set: {WEBHOOK_URL}")
         await set_bot_commands()
         
-        # راه‌اندازی بکاپ خودکار شبانه
         await start_backup_scheduler()
         
         periodic_task = asyncio.create_task(periodic_pending_check(application.bot))
