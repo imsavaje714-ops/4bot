@@ -653,7 +653,7 @@ async def handle_restore(update, context):
 # ==================== وضعیت کاربر ====================
 user_states = {}
 
-# ==================== توابع ربات (قبل از ثبت هندلرها) ====================
+# ==================== توابع ربات ====================
 async def shutdown_command(update, context):
     if not is_admin(update.effective_user.id):
         return
@@ -714,8 +714,7 @@ async def start_with_param(update, context):
             if invited_by != update.effective_user.id:
                 context.user_data["invited_by"] = invited_by
         except:
-            pass
-    await start(update, context)
+            pass    await start(update, context)
 
 async def check_membership_callback(update, context):
     query = update.callback_query
@@ -1045,7 +1044,7 @@ async def admin_callback(update, context):
         # فقط دکمه‌ها را حذف کن
         await query.edit_message_reply_markup(reply_markup=None)
         
-        # ارسال پیام جدید به جای ویرایش متن عکس
+        # ارسال پیام جدید
         await context.bot.send_message(
             chat_id=update.effective_user.id,
             text=f"✅ پرداخت {payment_id} تایید شد"
@@ -1543,40 +1542,38 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states.pop(user_id, None)
         return
     
-    # ========== اولویت 4: وضعیت‌های خرید اشتراک ==========
-    if state and state.startswith("awaiting_quantity_"):
-        await handle_quantity(update, context, user_id, state, text)
-        return
+    # ========== اولویت 4: وضعیت‌های خرید اشتراک (فقط اگر state وجود دارد) ==========
+    if state:
+        if state.startswith("awaiting_quantity_"):
+            await handle_quantity(update, context, user_id, state, text)
+            return
+        
+        if state.startswith("awaiting_coupon_"):
+            await handle_coupon(update, context, user_id, state, text)
+            return
+        
+        if state.startswith("awaiting_payment_"):
+            await handle_payment(update, context, user_id, text)
+            return
+        
+        if state == "awaiting_balance_action":
+            await handle_balance_action(update, context, user_id, text)
+            return
+        
+        if state == "awaiting_balance_amount":
+            await handle_balance_amount(update, context, user_id, text)
+            return
+        
+        if state == "awaiting_agent_payment":
+            await handle_agent_payment(update, context, user_id, text)
+            return
+        
+        if state.startswith("awaiting_agent_method_"):
+            await handle_agent_method(update, context, user_id, text)
+            return
     
-    if state and state.startswith("awaiting_coupon_"):
-        await handle_coupon(update, context, user_id, state, text)
-        return
-    
-    if state and state.startswith("awaiting_payment_"):
-        await handle_payment(update, context, user_id, text)
-        return
-    
-    # ========== اولویت 5: وضعیت‌های افزایش موجودی ==========
-    if state == "awaiting_balance_action":
-        await handle_balance_action(update, context, user_id, text)
-        return
-    
-    if state == "awaiting_balance_amount":
-        await handle_balance_amount(update, context, user_id, text)
-        return
-    
-    # ========== اولویت 6: وضعیت‌های درخواست نمایندگی ==========
-    if state == "awaiting_agent_payment":
-        await handle_agent_payment(update, context, user_id, text)
-        return
-    
-    if state and state.startswith("awaiting_agent_method_"):
-        await handle_agent_method(update, context, user_id, text)
-        return
-    
-    # ========== اولویت 7: هندلرهای ادمین ==========
+    # ========== اولویت 5: هندلرهای ادمین ==========
     if is_admin(user_id):
-        # دکمه‌های مستقیم ادمین
         if text == "📊 آمار":
             await stats_command(update, context)
             return
@@ -1596,7 +1593,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await user_info_command(update, context)
             return
         
-        # وضعیت‌های ادمین
         if state == "admin_config":
             await handle_admin_config(update, context, user_id, text)
             return
@@ -1658,12 +1654,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_remove_admin(update, context, user_id, text)
             return
     
-    # ========== اولویت 8: بررسی وضعیت ربات برای کاربران عادی ==========
+    # ========== اولویت 6: بررسی وضعیت ربات برای کاربران عادی ==========
     if not await get_bot_status():
         await update.message.reply_text("🔴 ربات غیرفعال است")
         return
     
-    # ========== اولویت 9: بررسی عضویت در کانال ==========
+    # ========== اولویت 7: بررسی عضویت در کانال ==========
     if not is_admin(user_id) and not await check_user_membership(user_id):
         kb = InlineKeyboardMarkup([[
             InlineKeyboardButton("📢 عضویت", url=f"https://t.me/{CHANNEL_USERNAME.replace('@','')}"),
@@ -1672,7 +1668,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ ابتدا در {CHANNEL_USERNAME} عضو شوید", reply_markup=kb)
         return
     
-    # ========== اولویت 10: منوی اصلی کاربر ==========
+    # ========== اولویت 8: منوی اصلی کاربر ==========
     if text == "🛍️ خرید اشتراک":
         await handle_buy_subscription(update, context, user_id, text)
     elif text == "💰 موجودی":
