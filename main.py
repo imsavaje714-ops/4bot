@@ -37,20 +37,16 @@ BANK_OWNER = "عرفانی نیا"
 # نوع اشتراک: "economy" (اکونومی) و "superfast" (سوپر فست)
 PRICE_PER_GB_ECONOMY = 169000      # قیمت هر گیگ اکونومی برای کاربر عادی
 PRICE_PER_GB_SUPERFAST = 229000    # قیمت هر گیگ سوپر فست برای کاربر عادی
-DISCOUNTED_PRICE_10GB_ECONOMY = 1690000   # تخفیف 10 گیگ اکونومی
-DISCOUNTED_PRICE_10GB_SUPERFAST = 2290000 # تخفیف 10 گیگ سوپر فست
 
 # قیمت‌های ویژه نمایندگان
 AGENT_PRICE_PER_GB_ECONOMY = 153000     # قیمت هر گیگ اکونومی برای نماینده
 AGENT_PRICE_PER_GB_SUPERFAST = 212000   # قیمت هر گیگ سوپر فست برای نماینده
-AGENT_DISCOUNTED_PRICE_10GB_ECONOMY = 1530000    # تخفیف 10 گیگ اکونومی نماینده
-AGENT_DISCOUNTED_PRICE_10GB_SUPERFAST = 2120000  # تخفیف 10 گیگ سوپر فست نماینده
 
 # مبلغ نمایندگی
 AGENT_REGISTRATION_FEE = 4000000
 
 CONFIG_NAME = "کانفیگ"
-AVAILABLE_VOLUMES = [1, 2, 5, 10]
+AVAILABLE_VOLUMES = list(range(1, 11))  # 1 تا 10 گیگ
 AVAILABLE_SUBSCRIPTION_TYPES = ["economy", "superfast"]
 
 RENDER_BASE_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("RAILWAY_STATIC_URL") or "https://OnePercentVPN12.railway.app"
@@ -90,21 +86,13 @@ def get_price_for_volume(volume: int, quantity: int = 1, is_agent: bool = False,
     """محاسبه قیمت بر اساس حجم، تعداد، وضعیت نمایندگی و نوع اشتراک"""
     if subscription_type == "superfast":
         if is_agent:
-            if volume == 10:
-                return AGENT_DISCOUNTED_PRICE_10GB_SUPERFAST * quantity
             return volume * quantity * AGENT_PRICE_PER_GB_SUPERFAST
         else:
-            if volume == 10:
-                return DISCOUNTED_PRICE_10GB_SUPERFAST * quantity
             return volume * quantity * PRICE_PER_GB_SUPERFAST
     else:  # economy
         if is_agent:
-            if volume == 10:
-                return AGENT_DISCOUNTED_PRICE_10GB_ECONOMY * quantity
             return volume * quantity * AGENT_PRICE_PER_GB_ECONOMY
         else:
-            if volume == 10:
-                return DISCOUNTED_PRICE_10GB_ECONOMY * quantity
             return volume * quantity * PRICE_PER_GB_ECONOMY
 
 def get_display_text_for_volume(volume: int, is_agent: bool = False, subscription_type: str = "economy") -> str:
@@ -116,16 +104,10 @@ def get_display_text_for_volume(volume: int, is_agent: bool = False, subscriptio
     else:
         type_name = "سوپر فست 💎"
     
-    if volume == 10:
-        if is_agent:
-            return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)} | نماینده ویژه"
-        else:
-            return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)} | تخفیف ویژه"
+    if is_agent:
+        return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)} | نماینده"
     else:
-        if is_agent:
-            return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)} | نماینده"
-        else:
-            return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)}"
+        return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)}"
 
 def get_subscription_type_keyboard():
     """کیبورد انتخاب نوع اشتراک"""
@@ -148,11 +130,17 @@ def get_admin_config_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_volume_selection_keyboard():
-    keyboard = [
-        [KeyboardButton("۱ گیگ"), KeyboardButton("۲ گیگ")],
-        [KeyboardButton("۵ گیگ"), KeyboardButton("۱۰ گیگ")],
-        [KeyboardButton("↩️ انصراف")]
-    ]
+    """کیبورد انتخاب حجم برای ادمین (۱ تا ۱۰ گیگ)"""
+    keyboard = []
+    row = []
+    for i in range(1, 11):
+        row.append(KeyboardButton(f"{persian_number(i)} گیگ"))
+        if len(row) == 3:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([KeyboardButton("↩️ انصراف")])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def is_admin(user_id: int) -> bool:
@@ -660,7 +648,7 @@ def parse_configs_from_text(text: str) -> List[str]:
 
 def extract_volume_from_display_text(text: str) -> Tuple[Optional[int], Optional[str]]:
     """استخراج حجم و نوع اشتراک از متن دکمه"""
-    for volume in AVAILABLE_VOLUMES:
+    for volume in range(1, 11):
         if text.startswith(f"{persian_number(volume)} گیگ"):
             if "اکونومی" in text:
                 return volume, "economy"
@@ -2055,12 +2043,10 @@ async def handle_admin_config_action(update, context, user_id, text):
         await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_admin_config_keyboard())
 
 async def handle_config_volume_selection(update, context, user_id, state, text):
-    volume_map = {
-        "۱ گیگ": 1,
-        "۲ گیگ": 2,
-        "۵ گیگ": 5,
-        "۱۰ گیگ": 10
-    }
+    volume_map = {}
+    for i in range(1, 11):
+        volume_map[f"{persian_number(i)} گیگ"] = i
+    
     if text in volume_map:
         volume = volume_map[text]
         if "economy" in state:
@@ -2354,27 +2340,12 @@ async def handle_subscription_plan(update, context, user_id, text, subscription_
         
         type_name = "اکونومی ⭐️" if subscription_type == "economy" else "سوپر فست 💎"
         
-        if volume == 10:
-            if subscription_type == "economy":
-                original_price = 10 * (AGENT_PRICE_PER_GB_ECONOMY if is_agent else PRICE_PER_GB_ECONOMY)
-            else:
-                original_price = 10 * (AGENT_PRICE_PER_GB_SUPERFAST if is_agent else PRICE_PER_GB_SUPERFAST)
-            await update.message.reply_text(
-                f"🎉 تخفیف ویژه {persian_number(volume)} گیگ {type_name}!\n\n"
-                f"✅ {persian_number(volume)} گیگ {CONFIG_NAME} {type_name}\n"
-                f"💰 قیمت اصلی: {format_price(original_price)}\n"
-                f"💰 قیمت با تخفیف: {format_price(price)}\n"
-                f"💸 شما {format_price(original_price - price)} تخفیف دریافت می‌کنید!\n\n"
-                f"🔢 تعداد مورد نیاز خود را به عدد وارد کنید:",
-                reply_markup=get_back_keyboard()
-            )
-        else:
-            await update.message.reply_text(
-                f"✅ {persian_number(volume)} گیگ {CONFIG_NAME} {type_name}\n"
-                f"💰 قیمت هر عدد: {format_price(price)}\n\n"
-                f"🔢 تعداد مورد نیاز خود را به عدد وارد کنید:",
-                reply_markup=get_back_keyboard()
-            )
+        await update.message.reply_text(
+            f"✅ {persian_number(volume)} گیگ {CONFIG_NAME} {type_name}\n"
+            f"💰 قیمت هر عدد: {format_price(price)}\n\n"
+            f"🔢 تعداد مورد نیاز خود را به عدد وارد کنید:",
+            reply_markup=get_back_keyboard()
+        )
         
         user_states[user_id] = f"awaiting_quantity_{volume}_{subscription_type}"
     else:
@@ -2410,27 +2381,12 @@ async def handle_quantity_input(update, context, user_id, state, text):
         type_name = "اکونومی ⭐️" if subscription_type == "economy" else "سوپر فست 💎"
         plan_name = f"{CONFIG_NAME} {type_name} | {volume} گیگ | {persian_number(quantity)} عدد"
         
-        if volume == 10:
-            if subscription_type == "economy":
-                original_total = 10 * (AGENT_PRICE_PER_GB_ECONOMY if is_agent else PRICE_PER_GB_ECONOMY) * quantity
-            else:
-                original_total = 10 * (AGENT_PRICE_PER_GB_SUPERFAST if is_agent else PRICE_PER_GB_SUPERFAST) * quantity
-            await update.message.reply_text(
-                f"🎉 تخفیف ویژه اعمال شد!\n\n"
-                f"✅ {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگی {type_name}\n"
-                f"💰 مبلغ اصلی: {format_price(original_total)}\n"
-                f"💰 مبلغ با تخفیف: {format_price(total_amount)}\n"
-                f"💸 مجموع تخفیف: {format_price(original_total - total_amount)}\n\n"
-                f"در صورت داشتن کد تخفیف، آن را وارد کنید، در غیر اینصورت روی 'ادامه' کلیک کنید:",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton("ادامه")], [KeyboardButton("↩️ بازگشت به منو")]], resize_keyboard=True)
-            )
-        else:
-            await update.message.reply_text(
-                f"✅ {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگی {type_name}\n"
-                f"💰 مبلغ کل: {format_price(total_amount)}\n\n"
-                f"در صورت داشتن کد تخفیف، آن را وارد کنید، در غیر اینصورت روی 'ادامه' کلیک کنید:",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton("ادامه")], [KeyboardButton("↩️ بازگشت به منو")]], resize_keyboard=True)
-            )
+        await update.message.reply_text(
+            f"✅ {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگی {type_name}\n"
+            f"💰 مبلغ کل: {format_price(total_amount)}\n\n"
+            f"در صورت داشتن کد تخفیف، آن را وارد کنید، در غیر اینصورت روی 'ادامه' کلیک کنید:",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("ادامه")], [KeyboardButton("↩️ بازگشت به منو")]], resize_keyboard=True)
+        )
         
         user_states[user_id] = f"awaiting_coupon_code_{total_amount}_{plan_name}_{volume}_{quantity}_{subscription_type}"
     except ValueError:
@@ -2599,12 +2555,24 @@ async def handle_agent_registration(update, context, user_id):
             f"💰 قیمت‌های ویژه نمایندگان:\n"
             f"⭐️ اکونومی ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY)}\n"
             f"⭐️ اکونومی ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 2)}\n"
+            f"⭐️ اکونومی ۳ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 3)}\n"
+            f"⭐️ اکونومی ۴ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 4)}\n"
             f"⭐️ اکونومی ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 5)}\n"
-            f"💎 اکونومی ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_ECONOMY)}\n"
-            f"⭐️ سوپر فست ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST)}\n"
-            f"⭐️ سوپر فست ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 2)}\n"
-            f"⭐️ سوپر فست ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 5)}\n"
-            f"💎 سوپر فست ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_SUPERFAST)}",
+            f"⭐️ اکونومی ۶ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 6)}\n"
+            f"⭐️ اکونومی ۷ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 7)}\n"
+            f"⭐️ اکونومی ۸ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 8)}\n"
+            f"⭐️ اکونومی ۹ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 9)}\n"
+            f"⭐️ اکونومی ۱۰ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 10)}\n\n"
+            f"💎 سوپر فست ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST)}\n"
+            f"💎 سوپر فست ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 2)}\n"
+            f"💎 سوپر فست ۳ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 3)}\n"
+            f"💎 سوپر فست ۴ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 4)}\n"
+            f"💎 سوپر فست ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 5)}\n"
+            f"💎 سوپر فست ۶ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 6)}\n"
+            f"💎 سوپر فست ۷ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 7)}\n"
+            f"💎 سوپر فست ۸ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 8)}\n"
+            f"💎 سوپر فست ۹ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 9)}\n"
+            f"💎 سوپر فست ۱۰ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 10)}",
             reply_markup=get_main_keyboard(True)
         )
         return
@@ -2618,12 +2586,24 @@ async def handle_agent_registration(update, context, user_id):
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"⭐️ اکونومی ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY)}\n"
         f"⭐️ اکونومی ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 2)}\n"
+        f"⭐️ اکونومی ۳ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 3)}\n"
+        f"⭐️ اکونومی ۴ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 4)}\n"
         f"⭐️ اکونومی ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 5)}\n"
-        f"💎 اکونومی ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_ECONOMY)}\n"
-        f"⭐️ سوپر فست ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST)}\n"
-        f"⭐️ سوپر فست ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 2)}\n"
-        f"⭐️ سوپر فست ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 5)}\n"
-        f"💎 سوپر فست ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_SUPERFAST)}\n"
+        f"⭐️ اکونومی ۶ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 6)}\n"
+        f"⭐️ اکونومی ۷ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 7)}\n"
+        f"⭐️ اکونومی ۸ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 8)}\n"
+        f"⭐️ اکونومی ۹ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 9)}\n"
+        f"⭐️ اکونومی ۱۰ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 10)}\n\n"
+        f"💎 سوپر فست ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST)}\n"
+        f"💎 سوپر فست ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 2)}\n"
+        f"💎 سوپر فست ۳ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 3)}\n"
+        f"💎 سوپر فست ۴ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 4)}\n"
+        f"💎 سوپر فست ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 5)}\n"
+        f"💎 سوپر فست ۶ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 6)}\n"
+        f"💎 سوپر فست ۷ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 7)}\n"
+        f"💎 سوپر فست ۸ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 8)}\n"
+        f"💎 سوپر فست ۹ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 9)}\n"
+        f"💎 سوپر فست ۱۰ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 10)}\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
     
@@ -2769,14 +2749,8 @@ async def admin_callback_handler(update, context):
                     f"💰 مبلغ {format_price(amt)} به موجودی شما اضافه شد و قابل استفاده است.\n"
                     f"💎 از این پس می‌توانید از قیمت‌های ویژه نمایندگان استفاده کنید.\n\n"
                     f"⭐️ قیمت‌های ویژه شما:\n"
-                    f"اکونومی ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY)}\n"
-                    f"اکونومی ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 2)}\n"
-                    f"اکونومی ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 5)}\n"
-                    f"اکونومی ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_ECONOMY)}\n"
-                    f"سوپر فست ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST)}\n"
-                    f"سوپر فست ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 2)}\n"
-                    f"سوپر فست ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 5)}\n"
-                    f"سوپر فست ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_SUPERFAST)}"
+                    f"اکونومی ۱ تا ۱۰ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY)} هر گیگ\n"
+                    f"💎 سوپر فست ۱ تا ۱۰ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST)} هر گیگ"
                 )
                 await query.message.reply_text(f"✅ کاربر {uid} به نمایندگی ارتقا یافت و مبلغ {format_price(amt)} به موجودی او اضافه شد.")
                     
@@ -2825,7 +2799,7 @@ async def handle_normal_commands(update, context, user_id, text):
         await update.message.reply_text("💳 نوع اشتراک خود را انتخاب کنید:", reply_markup=get_subscription_type_keyboard())
     elif text in ["⭐️ اشتراک اکونومی ⭐️", "💎 اشتراک سوپر فست 💎"]:
         await handle_subscription_type(update, context, user_id, text)
-    elif any(text.startswith(f"{persian_number(v)} گیگ اکونومی") for v in AVAILABLE_VOLUMES) or any(text.startswith(f"{persian_number(v)} گیگ سوپر فست") for v in AVAILABLE_VOLUMES):
+    elif any(text.startswith(f"{persian_number(v)} گیگ اکونومی") for v in range(1, 11)) or any(text.startswith(f"{persian_number(v)} گیگ سوپر فست") for v in range(1, 11)):
         # اینجا توسط state هندل می‌شود
         pass
     elif text == "💰 موجودی":
