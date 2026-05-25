@@ -26,12 +26,12 @@ import pytz
 # ---------- تنظیمات اولیه ----------
 TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_USERNAME = "@vpnkaveh"
-ADMIN_IDS = [6056483071, 6778206989]
+ADMIN_IDS = [6056483071, 7241184581]
 SUPPORT_USERNAME = "@kavehpro"
 
 # تنظیمات کارت بانکی (پیش‌فرض)
-BANK_CARD = "6274121773306105"
-BANK_OWNER = "کاوه"
+BANK_CARD = "6219861847420634"
+BANK_OWNER = "عرفانی نیا"
 
 # قیمت‌ها (قیمت‌های جدید)
 PRICE_PER_GB = 270000
