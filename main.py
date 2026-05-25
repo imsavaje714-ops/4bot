@@ -860,7 +860,7 @@ async def handle_payment(update, context, user_id, text):
         else:
             await update.message.reply_text("⚠️ خطا در ثبت درخواست", reply_markup=get_main_keyboard(await is_user_agent(user_id)))
             user_states.pop(user_id, None)
-        return  # مهم: جلوگیری از ادامه اجرا
+        return
     
     elif text == "💳 پرداخت از موجودی":
         balance = await get_user_balance(user_id)
@@ -907,7 +907,7 @@ async def process_receipt(update, context, user_id, payment_id):
         for admin_id in ADMIN_IDS:
             await context.bot.send_photo(admin_id, update.message.photo[-1].file_id, caption=caption, reply_markup=kb)
         await update.message.reply_text("✅ فیش برای ادمین ارسال شد", reply_markup=get_main_keyboard(await is_user_agent(user_id)))
-        user_states.pop(user_id, None)  # پاک کردن state بعد از ارسال فیش
+        user_states.pop(user_id, None)
     else:
         await update.message.reply_text("⚠️ لطفاً عکس فیش را ارسال کنید", reply_markup=get_back_keyboard())
         return
@@ -1035,10 +1035,16 @@ async def admin_callback(update, context):
             await query.edit_message_text("⚠️ پرداخت یافت نشد")
             return
         
+        # فقط دکمه‌ها را حذف کن (بدون ویرایش متن)
         await query.edit_message_reply_markup(reply_markup=None)
         
+        # ارسال پیام جدید به جای ویرایش متن عکس
+        await context.bot.send_message(
+            chat_id=update.effective_user.id,
+            text=f"✅ پرداخت {payment_id} تایید شد"
+        )
+        
         await update_payment_status(payment_id, "approved")
-        await query.edit_message_text(f"✅ پرداخت {payment_id} تایید شد")
         
         uid, amt, ptype, desc = payment
         
@@ -1051,26 +1057,27 @@ async def admin_callback(update, context):
         elif ptype == "add_balance":
             await add_balance(uid, amt)
             await context.bot.send_message(uid, f"✅ موجودی شما {format_price(amt)} افزایش یافت")
-            await query.message.reply_text(f"✅ موجودی کاربر {uid} به میزان {format_price(amt)} افزایش یافت")
+            await context.bot.send_message(update.effective_user.id, f"✅ موجودی کاربر {uid} به میزان {format_price(amt)} افزایش یافت")
         
         elif ptype == "agent_registration":
             await set_user_agent(uid)
             await add_balance(uid, amt)
             await context.bot.send_message(uid, f"🎉 شما به نمایندگی ارتقا یافتید!\n💰 {format_price(amt)} به موجودی اضافه شد")
-            await query.message.reply_text(f"✅ کاربر {uid} به نمایندگی ارتقا یافت و {format_price(amt)} به موجودی او اضافه شد")
+            await context.bot.send_message(update.effective_user.id, f"✅ کاربر {uid} به نمایندگی ارتقا یافت و {format_price(amt)} به موجودی او اضافه شد")
     
     elif data.startswith("reject_"):
         payment_id = int(data.split("_")[1])
         payment = await db_execute("SELECT user_id FROM payments WHERE id = %s", (payment_id,), fetchone=True)
         
+        # فقط دکمه‌ها را حذف کن
         await query.edit_message_reply_markup(reply_markup=None)
         
         if payment:
             await update_payment_status(payment_id, "rejected")
             await context.bot.send_message(payment[0], f"❌ پرداخت شما رد شد. کد: {payment_id}")
-            await query.edit_message_text(f"❌ پرداخت {payment_id} رد شد")
+            await context.bot.send_message(update.effective_user.id, f"❌ پرداخت {payment_id} رد شد")
         else:
-            await query.edit_message_text("❌ خطا در رد پرداخت")
+            await context.bot.send_message(update.effective_user.id, "❌ خطا در رد پرداخت")
 
 async def stats_command(update, context):
     if not is_admin(update.effective_user.id):
