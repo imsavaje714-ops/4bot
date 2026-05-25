@@ -8,41 +8,33 @@ import json
 import io
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from telegram import (
-    Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
+    Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 )
 from telegram.ext import (
     Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 )
 import psycopg2
 from psycopg2 import pool
-
-# ==================== تنظیمات زمانبندی بکاپ ====================
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 import uvicorn
 
-# ---------- تنظیمات اولیه ----------
+# ==================== تنظیمات اولیه ====================
 TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_USERNAME = "@mottasel1333"
 ADMIN_IDS = [6056483071, 7241184581]
 SUPPORT_USERNAME = "@Amireerfani"
 
-# تنظیمات کارت بانکی (پیش‌فرض)
 BANK_CARD = "6219861847420634"
 BANK_OWNER = "عرفانی نیا"
 
-# قیمت‌ها
 PRICE_PER_GB_ECONOMY = 169000
 PRICE_PER_GB_SUPERFAST = 229000
-
-# قیمت‌های ویژه نمایندگان
 AGENT_PRICE_PER_GB_ECONOMY = 153000
 AGENT_PRICE_PER_GB_SUPERFAST = 212000
-
-# مبلغ نمایندگی
 AGENT_REGISTRATION_FEE = 4000000
 
 CONFIG_NAME = "کانفیگ"
@@ -60,7 +52,7 @@ logging.basicConfig(
 app = FastAPI()
 bot_is_active = True
 
-# ---------- توابع کمکی ----------
+# ==================== توابع کمکی ====================
 def persian_number(number):
     persian_digits = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
     return ''.join(persian_digits.get(ch, ch) for ch in str(number))
@@ -92,7 +84,7 @@ def get_display_text_for_volume(volume: int, is_agent: bool = False, subscriptio
         return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)} | نماینده"
     return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)}"
 
-# ---------- کیبوردها ----------
+# ==================== کیبوردها ====================
 def get_main_keyboard(is_agent: bool = False):
     keyboard = [
         [KeyboardButton("🛍️ خرید اشتراک")],
@@ -146,7 +138,8 @@ def get_admin_main_keyboard():
         [KeyboardButton("🗂️ اشتراک‌های من"), KeyboardButton("📚 آموزش اتصال")],
         [KeyboardButton("👨‍💼 درخواست نمایندگی")],
         [KeyboardButton("⚙️ مدیریت ادمین"), KeyboardButton("💳 مدیریت کارت")],
-        [KeyboardButton("👥 مدیریت کاربران"), KeyboardButton("⚙️ مدیریت کانفیگ")]
+        [KeyboardButton("👥 مدیریت کاربران"), KeyboardButton("⚙️ مدیریت کانفیگ")],
+        [KeyboardButton("📊 آمار"), KeyboardButton("🔌 خاموش/روشن")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -207,12 +200,15 @@ def get_coupon_recipient_keyboard():
         [KeyboardButton("↩️ بازگشت به منو")]
     ], resize_keyboard=True)
 
+def get_toggle_status_keyboard():
+    status = "🟢 روشن" if bot_is_active else "🔴 خاموش"
+    return ReplyKeyboardMarkup([[KeyboardButton(f"⚙️ وضعیت ربات: {status}")], [KeyboardButton("↩️ بازگشت به منو")]], resize_keyboard=True)
+
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
-# ---------- توابع تشخیص ----------
+# ==================== توابع تشخیص ====================
 def extract_volume_and_type(text: str) -> Tuple[Optional[int], Optional[str]]:
-    """استخراج حجم و نوع اشتراک از متن دکمه"""
     for volume in range(1, 11):
         if f"{persian_number(volume)} گیگ" in text:
             if "اکونومی" in text:
@@ -232,7 +228,7 @@ def parse_configs_from_text(text: str) -> List[str]:
             configs.append(line)
     return configs
 
-# ---------- دیتابیس ----------
+# ==================== دیتابیس ====================
 DATABASE_URL = os.getenv("DATABASE_URL")
 db_pool = None
 
@@ -268,7 +264,7 @@ def _db_execute_sync(query, params=(), fetch=False, fetchone=False, returning=Fa
 async def db_execute(query, params=(), fetch=False, fetchone=False, returning=False):
     return await asyncio.to_thread(_db_execute_sync, query, params, fetch, fetchone, returning)
 
-# ---------- ساخت جداول ----------
+# ==================== ساخت جداول ====================
 async def create_tables():
     await db_execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -360,18 +356,13 @@ async def create_tables():
             is_active BOOLEAN DEFAULT TRUE
         )
     """)
-    await db_execute("""
-        CREATE TABLE IF NOT EXISTS processed_payments (
-            payment_id INTEGER PRIMARY KEY
-        )
-    """)
     
     for admin_id in ADMIN_IDS:
         await db_execute("INSERT INTO admins (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (admin_id,))
     
     await db_execute("INSERT INTO bank_settings (id, card_number, owner_name) VALUES (1, %s, %s) ON CONFLICT DO NOTHING", (BANK_CARD, BANK_OWNER))
 
-# ---------- توابع کاربر ----------
+# ==================== توابع کاربر ====================
 async def ensure_user(user_id, username, invited_by=None):
     row = await db_execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,), fetchone=True)
     if not row:
@@ -433,59 +424,50 @@ async def get_pending_subscriptions():
     return [{"subscription_id": r[0], "user_id": r[1], "volume": r[2], "plan": r[3], "quantity": r[4], "subscription_type": r[5]} for r in rows]
 
 async def get_available_configs(volume: int, quantity: int, subscription_type: str):
-    # استفاده از FOR UPDATE برای قفل کردن ردیف‌ها و جلوگیری از ارسال دوباره
-    conn = db_pool.getconn()
-    cur = conn.cursor()
-    try:
-        # قفل کردن ردیف‌ها برای جلوگیری از race condition
-        cur.execute(
-            "SELECT id, config_text FROM config_pool WHERE volume = %s AND is_sold = FALSE AND subscription_type = %s ORDER BY id LIMIT %s FOR UPDATE SKIP LOCKED",
-            (volume, subscription_type, quantity)
-        )
-        rows = cur.fetchall()
-        if rows and len(rows) >= quantity:
-            config_ids = [r[0] for r in rows]
-            # بلافاصله علامت فروخته شده بزنیم
-            cur.execute(
-                "UPDATE config_pool SET is_sold = TRUE, sold_to_user = %s WHERE id = ANY(%s)",
-                (None, config_ids)  # user_id را بعداً به‌روز می‌کنیم
-            )
-            conn.commit()
-            return [{"id": r[0], "config_text": r[1]} for r in rows]
-        return None
-    finally:
-        cur.close()
-        db_pool.putconn(conn)
+    rows = await db_execute(
+        "SELECT id, config_text FROM config_pool WHERE volume = %s AND is_sold = FALSE AND subscription_type = %s ORDER BY id LIMIT %s",
+        (volume, subscription_type, quantity), fetch=True
+    )
+    if rows and len(rows) == quantity:
+        return [{"id": r[0], "config_text": r[1]} for r in rows]
+    return None
 
 async def mark_configs_as_sold(config_ids: List[int], user_id: int):
-    # به‌روزرسانی sold_to_user
-    await db_execute("UPDATE config_pool SET sold_to_user = %s WHERE id = ANY(%s)", (user_id, config_ids))
+    for cid in config_ids:
+        await db_execute("UPDATE config_pool SET is_sold = TRUE, sold_to_user = %s WHERE id = %s", (user_id, cid))
 
 async def get_available_configs_count(volume: int, subscription_type: str):
     row = await db_execute("SELECT COUNT(*) FROM config_pool WHERE volume = %s AND is_sold = FALSE AND subscription_type = %s", (volume, subscription_type), fetchone=True)
     return row[0] if row else 0
 
 async def send_multiple_configs_to_user(subscription_id: int, user_id: int, volume: int, quantity: int, plan: str, bot, subscription_type: str):
-    # جلوگیری از پردازش مجدد
-    processed = await db_execute("SELECT 1 FROM processed_payments WHERE payment_id = (SELECT payment_id FROM subscriptions WHERE id = %s)", (subscription_id,), fetchone=True)
-    if processed:
+    # قفل برای جلوگیری از ارسال دوباره
+    lock_key = f"send_config_{subscription_id}"
+    if hasattr(send_multiple_configs_to_user, "locks") and lock_key in send_multiple_configs_to_user.locks:
+        logging.warning(f"Duplicate send attempt blocked for subscription {subscription_id}")
         return False
+    if not hasattr(send_multiple_configs_to_user, "locks"):
+        send_multiple_configs_to_user.locks = set()
+    send_multiple_configs_to_user.locks.add(lock_key)
     
-    configs = await get_available_configs(volume, quantity, subscription_type)
-    if configs and len(configs) == quantity:
-        configs_text = "\n\n".join([c['config_text'] for c in configs])
-        await update_subscription_config(subscription_id, configs_text)
-        await mark_configs_as_sold([c['id'] for c in configs], user_id)
+    try:
+        # بررسی مجدد وضعیت اشتراک
+        sub_status = await db_execute("SELECT status FROM subscriptions WHERE id = %s", (subscription_id,), fetchone=True)
+        if sub_status and sub_status[0] == 'active':
+            logging.info(f"Subscription {subscription_id} already active")
+            return True
         
-        # ثبت پردازش شده
-        payment = await db_execute("SELECT payment_id FROM subscriptions WHERE id = %s", (subscription_id,), fetchone=True)
-        if payment:
-            await db_execute("INSERT INTO processed_payments (payment_id) VALUES (%s) ON CONFLICT DO NOTHING", (payment[0],))
-        
-        type_name = "اکونومی ⭐️" if subscription_type == "economy" else "سوپر فست 💎"
-        await bot.send_message(user_id, f"✅ اشتراک {type_name} {plan} شما فعال شد!\n\n🔐 کانفیگ:\n```\n{configs_text}\n```", parse_mode="Markdown")
-        return True
-    return False
+        configs = await get_available_configs(volume, quantity, subscription_type)
+        if configs and len(configs) == quantity:
+            configs_text = "\n\n".join([c['config_text'] for c in configs])
+            await update_subscription_config(subscription_id, configs_text)
+            await mark_configs_as_sold([c['id'] for c in configs], user_id)
+            type_name = "اکونومی ⭐️" if subscription_type == "economy" else "سوپر فست 💎"
+            await bot.send_message(user_id, f"✅ اشتراک {type_name} {plan} شما فعال شد!\n\n🔐 کانفیگ:\n```\n{configs_text}\n```", parse_mode="Markdown")
+            return True
+        return False
+    finally:
+        send_multiple_configs_to_user.locks.discard(lock_key)
 
 async def check_user_membership(user_id: int) -> bool:
     try:
@@ -542,7 +524,15 @@ async def get_total_configs_sold():
     row = await db_execute("SELECT COUNT(*) FROM config_pool WHERE is_sold = TRUE", fetchone=True)
     return row[0] if row else 0
 
-# ---------- مدیریت کانفیگ ادمین ----------
+async def get_pending_balance_payments():
+    rows = await db_execute("SELECT id, user_id, amount, description FROM payments WHERE type = 'add_balance' AND status = 'pending'", fetch=True)
+    return [{"payment_id": r[0], "user_id": r[1], "amount": r[2], "description": r[3]} for r in rows]
+
+async def get_pending_agent_payments():
+    rows = await db_execute("SELECT id, user_id, amount, description FROM payments WHERE type = 'agent_registration' AND status = 'pending'", fetch=True)
+    return [{"payment_id": r[0], "user_id": r[1], "amount": r[2], "description": r[3]} for r in rows]
+
+# ==================== مدیریت کانفیگ ادمین ====================
 async def add_multiple_configs_to_pool(volume: int, configs: List[str], admin_id: int, sub_type: str):
     success = 0
     for cfg in configs:
@@ -574,15 +564,7 @@ async def get_all_configs():
     rows = await db_execute("SELECT id, volume, config_text, is_sold, sold_to_user, subscription_type FROM config_pool ORDER BY id DESC LIMIT 100", fetch=True)
     return [{"id": r[0], "volume": r[1], "config_text": r[2][:50], "is_sold": r[3], "sold_to": r[4], "type": "اکونومی" if r[5] == "economy" else "سوپر فست"} for r in rows]
 
-async def get_pending_balance_payments():
-    rows = await db_execute("SELECT id, user_id, amount, description FROM payments WHERE type = 'add_balance' AND status = 'pending'", fetch=True)
-    return [{"payment_id": r[0], "user_id": r[1], "amount": r[2], "description": r[3]} for r in rows]
-
-async def get_pending_agent_payments():
-    rows = await db_execute("SELECT id, user_id, amount, description FROM payments WHERE type = 'agent_registration' AND status = 'pending'", fetch=True)
-    return [{"payment_id": r[0], "user_id": r[1], "amount": r[2], "description": r[3]} for r in rows]
-
-# ---------- بکاپ ----------
+# ==================== بکاپ ====================
 scheduler = AsyncIOScheduler(timezone=pytz.timezone('Asia/Tehran'))
 
 async def backup_config_pool_only():
@@ -656,10 +638,20 @@ async def handle_restore(update, context):
         await update.message.reply_text("❌ فایل نامعتبر", reply_markup=get_admin_main_keyboard())
     user_states.pop(user_id, None)
 
-# ---------- وضعیت کاربر ----------
+# ==================== وضعیت ربات ====================
+async def get_bot_status():
+    row = await db_execute("SELECT is_active FROM bot_status WHERE id = 1", fetchone=True)
+    return row[0] if row else True
+
+async def set_bot_status(active: bool):
+    global bot_is_active
+    bot_is_active = active
+    await db_execute("UPDATE bot_status SET is_active = %s WHERE id = 1", (active,))
+
+# ==================== وضعیت کاربر ====================
 user_states = {}
 
-# ---------- هندلرها ----------
+# ==================== هندلرها ====================
 application = Application.builder().token(TOKEN).build()
 
 async def start(update, context):
@@ -668,7 +660,7 @@ async def start(update, context):
         await update.message.reply_text("🚫 شما بن شده‌اید")
         return
     
-    if not await is_bot_available_for_user(user.id) and not is_admin(user.id):
+    if not await get_bot_status() and not is_admin(user.id):
         await update.message.reply_text("🔴 ربات غیرفعال است")
         return
     
@@ -717,7 +709,7 @@ async def check_membership_callback(update, context):
     else:
         await query.edit_message_text("❌ هنوز عضو نشده‌اید")
 
-# ---------- هندلر خرید اشتراک ----------
+# ==================== هندلر خرید اشتراک ====================
 async def handle_buy_subscription(update, context, user_id, text):
     is_agent_user = await is_user_agent(user_id)
     
@@ -893,7 +885,7 @@ async def process_receipt(update, context, user_id, payment_id):
         return
     user_states.pop(user_id, None)
 
-# ---------- سایر هندلرهای کاربر ----------
+# ==================== سایر هندلرهای کاربر ====================
 async def show_balance(update, context, user_id):
     balance = await get_user_balance(user_id)
     keyboard = ReplyKeyboardMarkup([[KeyboardButton("💳 افزایش موجودی")], [KeyboardButton("↩️ بازگشت به منو")]], resize_keyboard=True)
@@ -994,7 +986,7 @@ async def handle_agent_method(update, context, user_id, text):
     else:
         await update.message.reply_text("⚠️ از دکمه‌ها استفاده کنید", reply_markup=get_payment_method_keyboard(False))
 
-# ---------- هندلرهای ادمین ----------
+# ==================== هندلرهای ادمین ====================
 async def admin_callback(update, context):
     query = update.callback_query
     await query.answer()
@@ -1010,102 +1002,82 @@ async def admin_callback(update, context):
     
     if data.startswith("approve_"):
         payment_id = int(data.split("_")[1])
-        
-        # بررسی اینکه آیا قبلاً پردازش شده
-        processed = await db_execute("SELECT 1 FROM processed_payments WHERE payment_id = %s", (payment_id,), fetchone=True)
-        if processed:
-            await query.edit_message_text("⚠️ این پرداخت قبلاً بررسی شده است")
-            # حذف دکمه‌ها
-            await query.edit_message_reply_markup(reply_markup=None)
-            return
-        
         payment = await db_execute("SELECT user_id, amount, type, description FROM payments WHERE id = %s", (payment_id,), fetchone=True)
         if not payment:
             await query.edit_message_text("⚠️ پرداخت یافت نشد")
             return
         
-        await update_payment_status(payment_id, "approved")
-        await db_execute("INSERT INTO processed_payments (payment_id) VALUES (%s) ON CONFLICT DO NOTHING", (payment_id,))
-        
-        # حذف دکمه‌ها
+        # حذف دکمه‌ها با ویرایش پیام
         await query.edit_message_reply_markup(reply_markup=None)
-        await query.edit_message_text("✅ پرداخت تایید شد")
+        
+        await update_payment_status(payment_id, "approved")
+        await query.edit_message_text(f"✅ پرداخت {payment_id} تایید شد")
         
         uid, amt, ptype, desc = payment
         
+        # ارسال پیام به کاربر
         if ptype == "buy_subscription":
             await context.bot.send_message(uid, f"✅ پرداخت شما تایید شد! کد: {payment_id}\nدر حال ارسال کانفیگ...")
             sub = await db_execute("SELECT id, volume, quantity, subscription_type FROM subscriptions WHERE payment_id = %s", (payment_id,), fetchone=True)
             if sub:
                 await send_multiple_configs_to_user(sub[0], uid, sub[1], sub[2], desc, context.bot, sub[3])
-            # اطلاع به ادمین
-            for admin_id in ADMIN_IDS:
-                await context.bot.send_message(admin_id, f"✅ پرداخت خرید اشتراک کاربر {uid} تایید شد")
         
         elif ptype == "add_balance":
             await add_balance(uid, amt)
             await context.bot.send_message(uid, f"✅ موجودی شما {format_price(amt)} افزایش یافت")
-            # اطلاع به ادمین
-            for admin_id in ADMIN_IDS:
-                await context.bot.send_message(admin_id, f"✅ افزایش موجودی کاربر {uid} به مبلغ {format_price(amt)} تایید شد")
+            # ارسال پیام به ادمین تاییدکننده
+            await query.message.reply_text(f"✅ موجودی کاربر {uid} به میزان {format_price(amt)} افزایش یافت")
         
         elif ptype == "agent_registration":
             await set_user_agent(uid)
             await add_balance(uid, amt)
             await context.bot.send_message(uid, f"🎉 شما به نمایندگی ارتقا یافتید!\n💰 {format_price(amt)} به موجودی اضافه شد")
-            # اطلاع به ادمین
-            for admin_id in ADMIN_IDS:
-                await context.bot.send_message(admin_id, f"✅ ثبت‌نام نمایندگی کاربر {uid} تایید شد")
+            await query.message.reply_text(f"✅ کاربر {uid} به نمایندگی ارتقا یافت و {format_price(amt)} به موجودی او اضافه شد")
     
     elif data.startswith("reject_"):
         payment_id = int(data.split("_")[1])
+        payment = await db_execute("SELECT user_id FROM payments WHERE id = %s", (payment_id,), fetchone=True)
         
-        # بررسی اینکه آیا قبلاً پردازش شده
-        processed = await db_execute("SELECT 1 FROM processed_payments WHERE payment_id = %s", (payment_id,), fetchone=True)
-        if processed:
-            await query.edit_message_text("⚠️ این پرداخت قبلاً بررسی شده است")
-            await query.edit_message_reply_markup(reply_markup=None)
-            return
+        # حذف دکمه‌ها با ویرایش پیام
+        await query.edit_message_reply_markup(reply_markup=None)
         
-        payment = await db_execute("SELECT user_id, amount, type FROM payments WHERE id = %s", (payment_id,), fetchone=True)
         if payment:
             await update_payment_status(payment_id, "rejected")
-            await db_execute("INSERT INTO processed_payments (payment_id) VALUES (%s) ON CONFLICT DO NOTHING", (payment_id,))
-            await context.bot.send_message(payment[0], f"❌ پرداخت شما رد شد\n🆔 کد: {payment_id}")
-            
-            # اطلاع به ادمین
-            for admin_id in ADMIN_IDS:
-                await context.bot.send_message(admin_id, f"❌ پرداخت کاربر {payment[0]} رد شد")
-        
-        # حذف دکمه‌ها
-        await query.edit_message_reply_markup(reply_markup=None)
-        await query.edit_message_text("❌ پرداخت رد شد")
+            await context.bot.send_message(payment[0], f"❌ پرداخت شما رد شد. کد: {payment_id}")
+            await query.edit_message_text(f"❌ پرداخت {payment_id} رد شد")
+        else:
+            await query.edit_message_text("❌ خطا در رد پرداخت")
 
 async def stats_command(update, context):
     if not is_admin(update.effective_user.id):
         return
-    try:
-        users = await db_execute("SELECT COUNT(*) FROM users", fetchone=True)
-        agents = await db_execute("SELECT COUNT(*) FROM users WHERE is_agent = TRUE", fetchone=True)
-        income = await get_total_income()
-        total_sold = await get_total_configs_sold()
-        stats = await get_config_pool_stats()
-        banned = await db_execute("SELECT COUNT(*) FROM banned_users", fetchone=True)
-        bot_status = await get_bot_status()
-        
-        await update.message.reply_text(
-            f"📊 آمار ربات OnePercentVPN12 📊\n━━━━━━━━━━━━━━━━━━━━\n"
-            f"👥 کاربران: {persian_number(users[0])}\n"
-            f"👑 نمایندگان: {persian_number(agents[0])}\n"
-            f"🚫 بن شده: {persian_number(banned[0])}\n"
-            f"💰 درآمد: {format_price(income)}\n"
-            f"📦 کانفیگ فروخته شده: {persian_number(total_sold)}\n"
-            f"📤 کانفیگ موجود: {persian_number(stats['available'])}\n"
-            f"🟢 وضعیت: {'روشن' if bot_status else 'خاموش'}"
-        )
-    except Exception as e:
-        logging.error(f"Stats error: {e}")
-        await update.message.reply_text("⚠️ خطا در دریافت آمار")
+    users = await db_execute("SELECT COUNT(*) FROM users", fetchone=True)
+    agents = await db_execute("SELECT COUNT(*) FROM users WHERE is_agent = TRUE", fetchone=True)
+    income = await get_total_income()
+    total_sold = await get_total_configs_sold()
+    stats = await get_config_pool_stats()
+    banned = await db_execute("SELECT COUNT(*) FROM banned_users", fetchone=True)
+    status = "🟢 روشن" if await get_bot_status() else "🔴 خاموش"
+    
+    await update.message.reply_text(
+        f"📊 آمار ربات OnePercentVPN12 📊\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"👥 کاربران: {persian_number(users[0])}\n"
+        f"👑 نمایندگان: {persian_number(agents[0])}\n"
+        f"🚫 بن شده: {persian_number(banned[0])}\n"
+        f"💰 درآمد: {format_price(income)}\n"
+        f"📦 کانفیگ فروخته شده: {persian_number(total_sold)}\n"
+        f"📤 کانفیگ موجود: {persian_number(stats['available'])}\n"
+        f"🟢 وضعیت: {status}"
+    )
+
+async def toggle_status_command(update, context):
+    if not is_admin(update.effective_user.id):
+        return
+    current = await get_bot_status()
+    new_status = not current
+    await set_bot_status(new_status)
+    status_text = "روشن" if new_status else "خاموش"
+    await update.message.reply_text(f"🟢 وضعیت ربات: {status_text}", reply_markup=get_admin_main_keyboard())
 
 async def user_info_command(update, context):
     if not is_admin(update.effective_user.id):
@@ -1466,6 +1438,9 @@ async def handle_add_admin(update, context, user_id, text):
 async def handle_remove_admin(update, context, user_id, text):
     try:
         target = int(text.strip())
+        if target in ADMIN_IDS:
+            await update.message.reply_text("❌ نمی‌توان ادمین اصلی را حذف کرد", reply_markup=get_admin_management_keyboard())
+            return
         await db_execute("DELETE FROM admins WHERE user_id = %s", (target,))
         await update.message.reply_text(f"✅ ادمین {target} حذف شد", reply_markup=get_admin_management_keyboard())
     except:
@@ -1486,32 +1461,6 @@ async def debug_subscriptions_command(update, context):
         f"👑 ثبت نمایندگی: {persian_number(len(agent_pending))}"
     )
 
-async def shutdown_command(update, context):
-    if not is_admin(update.effective_user.id):
-        return
-    global bot_is_active
-    bot_is_active = False
-    await db_execute("UPDATE bot_status SET is_active = FALSE WHERE id = 1")
-    await update.message.reply_text("🔴 ربات برای کاربران عادی خاموش شد")
-
-async def startup_command(update, context):
-    if not is_admin(update.effective_user.id):
-        return
-    global bot_is_active
-    bot_is_active = True
-    await db_execute("UPDATE bot_status SET is_active = TRUE WHERE id = 1")
-    await update.message.reply_text("🟢 ربات برای کاربران عادی روشن شد")
-
-async def get_bot_status():
-    row = await db_execute("SELECT is_active FROM bot_status WHERE id = 1", fetchone=True)
-    return row[0] if row else True
-
-async def is_bot_available_for_user(user_id):
-    if is_admin(user_id):
-        return True
-    row = await db_execute("SELECT is_active FROM bot_status WHERE id = 1", fetchone=True)
-    return row[0] if row else True
-
 async def is_user_banned(user_id):
     row = await db_execute("SELECT user_id FROM banned_users WHERE user_id = %s", (user_id,), fetchone=True)
     return row is not None
@@ -1523,12 +1472,12 @@ async def send_long_message(chat_id, text, context, reply_markup=None, parse_mod
     for i in range(0, len(text), 4000):
         await context.bot.send_message(chat_id, text[i:i+4000], reply_markup=reply_markup if i == 0 else None, parse_mode=parse_mode)
 
-# ---------- وظیفه دوره‌ای ----------
+# ==================== وظیفه دوره‌ای ====================
 async def periodic_pending_check():
     while True:
         await asyncio.sleep(30)
         try:
-            if await is_bot_available_for_user(0):
+            if await get_bot_status():
                 pending = await get_pending_subscriptions()
                 for sub in pending:
                     await send_multiple_configs_to_user(
@@ -1538,7 +1487,7 @@ async def periodic_pending_check():
         except Exception as e:
             logging.error(f"Periodic error: {e}")
 
-# ---------- هندلر اصلی ----------
+# ==================== هندلر اصلی ====================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user:
         return
@@ -1576,6 +1525,26 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # هندلرهای ادمین
     if is_admin(user_id):
+        # دستورات مستقیم ادمین
+        if text == "📊 آمار":
+            await stats_command(update, context)
+            return
+        if text == "🔌 خاموش/روشن":
+            await toggle_status_command(update, context)
+            return
+        if text == "⚙️ مدیریت کانفیگ":
+            await add_config_command(update, context)
+            return
+        if text == "⚙️ مدیریت ادمین":
+            await admin_management_command(update, context)
+            return
+        if text == "💳 مدیریت کارت":
+            await bank_management_command(update, context)
+            return
+        if text == "👥 مدیریت کاربران":
+            await user_info_command(update, context)
+            return
+        
         if state == "admin_config":
             await handle_admin_config(update, context, user_id, text)
             return
@@ -1636,26 +1605,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if state == "admin_remove_admin":
             await handle_remove_admin(update, context, user_id, text)
             return
-        
-        # دستورات مستقیم ادمین
-        if text == "⚙️ مدیریت کانفیگ":
-            await add_config_command(update, context)
-            return
-        if text == "⚙️ مدیریت ادمین":
-            await admin_management_command(update, context)
-            return
-        if text == "💳 مدیریت کارت":
-            await bank_management_command(update, context)
-            return
-        if text == "👥 مدیریت کاربران":
-            await user_info_command(update, context)
-            return
-        if text == "📢 ارسال به همه کاربران" or text == "👑 ارسال به نمایندگان" or text == "👤 ارسال به یک نفر":
-            await handle_notification_type(update, context, user_id, text)
-            return
     
     # هندلرهای کاربر عادی
-    if not await is_bot_available_for_user(user_id):
+    if not await get_bot_status():
         await update.message.reply_text("🔴 ربات غیرفعال است")
         return
     
@@ -1710,7 +1662,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await handle_buy_subscription(update, context, user_id, text)
 
-# ---------- ثبت هندلرها ----------
+# ==================== ثبت هندلرها ====================
 application.add_handler(CommandHandler("start", start_with_param))
 application.add_handler(CommandHandler("stats", stats_command))
 application.add_handler(CommandHandler("user_info", user_info_command))
@@ -1727,11 +1679,25 @@ application.add_handler(CommandHandler("admin", admin_management_command))
 application.add_handler(CommandHandler("bank", bank_management_command))
 application.add_handler(CommandHandler("shutdown", shutdown_command))
 application.add_handler(CommandHandler("startup", startup_command))
-application.add_handler(CommandHandler("debug_subscriptions", debug_subscriptions_command))
+application.add_handler(CommandHandler("debug", debug_subscriptions_command))
+application.add_handler(CommandHandler("toggle", toggle_status_command))
 application.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), message_handler))
 application.add_handler(CallbackQueryHandler(admin_callback))
 
-# ---------- webhook ----------
+# ==================== توابع shutdown/startup ====================
+async def shutdown_command(update, context):
+    if not is_admin(update.effective_user.id):
+        return
+    await set_bot_status(False)
+    await update.message.reply_text("🔴 ربات برای کاربران عادی خاموش شد")
+
+async def startup_command(update, context):
+    if not is_admin(update.effective_user.id):
+        return
+    await set_bot_status(True)
+    await update.message.reply_text("🟢 ربات برای کاربران عادی روشن شد")
+
+# ==================== webhook ====================
 @app.post(WEBHOOK_PATH)
 async def webhook(request: Request):
     data = await request.json()
@@ -1739,7 +1705,7 @@ async def webhook(request: Request):
     await application.update_queue.put(update)
     return {"ok": True}
 
-# ---------- lifecycle ----------
+# ==================== lifecycle ====================
 periodic_task = None
 
 @app.on_event("startup")
@@ -1758,7 +1724,7 @@ async def startup_event():
     
     periodic_task = asyncio.create_task(periodic_pending_check())
     
-    status_text = "روشن" if bot_is_active else "خاموش"
+    status_text = "روشن" if await get_bot_status() else "خاموش"
     for admin_id in ADMIN_IDS:
         try:
             await application.bot.send_message(
