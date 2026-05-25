@@ -25,7 +25,7 @@ import pytz
 
 # ---------- تنظیمات اولیه ----------
 TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_USERNAME = "@vpnkaveh"
+CHANNEL_USERNAME = "@mottasel1333"
 ADMIN_IDS = [6056483071, 7241184581]
 SUPPORT_USERNAME = "@kavehpro"
 
