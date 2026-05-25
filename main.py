@@ -27,7 +27,7 @@ import pytz
 TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_USERNAME = "@mottasel1333"
 ADMIN_IDS = [6056483071, 7241184581]
-SUPPORT_USERNAME = "@kavehpro"
+SUPPORT_USERNAME = "@Amireerfani"
 
 # تنظیمات کارت بانکی (پیش‌فرض)
 BANK_CARD = "6219861847420634"
