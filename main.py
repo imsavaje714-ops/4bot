@@ -833,6 +833,7 @@ async def handle_payment(update, context, user_id, text):
     parts = state.split("_")
     amount = int(parts[2])
     
+    # تشخیص اینکه آیا کوپن وجود دارد یا خیر
     if len(parts) >= 8 and parts[-1] not in ["card_to_card"] and not parts[-1].isdigit():
         coupon = parts[-1]
         volume = int(parts[-3])
@@ -859,7 +860,7 @@ async def handle_payment(update, context, user_id, text):
         else:
             await update.message.reply_text("⚠️ خطا در ثبت درخواست", reply_markup=get_main_keyboard(await is_user_agent(user_id)))
             user_states.pop(user_id, None)
-        return
+        return  # مهم: جلوگیری از ادامه اجرا
     
     elif text == "💳 پرداخت از موجودی":
         balance = await get_user_balance(user_id)
@@ -906,10 +907,10 @@ async def process_receipt(update, context, user_id, payment_id):
         for admin_id in ADMIN_IDS:
             await context.bot.send_photo(admin_id, update.message.photo[-1].file_id, caption=caption, reply_markup=kb)
         await update.message.reply_text("✅ فیش برای ادمین ارسال شد", reply_markup=get_main_keyboard(await is_user_agent(user_id)))
+        user_states.pop(user_id, None)  # پاک کردن state بعد از ارسال فیش
     else:
         await update.message.reply_text("⚠️ لطفاً عکس فیش را ارسال کنید", reply_markup=get_back_keyboard())
         return
-    user_states.pop(user_id, None)
 
 # ==================== سایر هندلرهای کاربر ====================
 async def show_balance(update, context, user_id):
@@ -1009,6 +1010,7 @@ async def handle_agent_method(update, context, user_id, text):
             reply_markup=get_back_keyboard()
         )
         user_states[user_id] = f"awaiting_agent_receipt_{payment_id}"
+        return
     else:
         await update.message.reply_text("⚠️ از دکمه‌ها استفاده کنید", reply_markup=get_payment_method_keyboard(False))
 
@@ -1498,7 +1500,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text if update.message.text else ""
     state = user_states.get(user_id)
     
-    # هندلرهای فیش (عکس)
+    # هندلرهای فیش (عکس) - اولویت اول
     if update.message.photo:
         if state and state.startswith("awaiting_receipt_"):
             payment_id = int(state.split("_")[2])
@@ -1513,6 +1515,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await process_receipt(update, context, user_id, payment_id)
             return
     
+    # هندلر بازیابی بکاپ
     if update.message.document and state == "awaiting_restore":
         await handle_restore(update, context)
         return
@@ -1527,8 +1530,45 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states.pop(user_id, None)
         return
     
-    # هندلرهای ادمین
+    # ========== ابتدا وضعیت‌های کاربر را بررسی کن ==========
+    # وضعیت خرید اشتراک - دریافت تعداد
+    if state and state.startswith("awaiting_quantity_"):
+        await handle_quantity(update, context, user_id, state, text)
+        return
+    
+    # وضعیت خرید اشتراک - دریافت کد تخفیف
+    if state and state.startswith("awaiting_coupon_"):
+        await handle_coupon(update, context, user_id, state, text)
+        return
+    
+    # وضعیت خرید اشتراک - انتخاب روش پرداخت
+    if state and state.startswith("awaiting_payment_"):
+        await handle_payment(update, context, user_id, text)
+        return
+    
+    # وضعیت افزایش موجودی - انتخاب اقدام
+    if state == "awaiting_balance_action":
+        await handle_balance_action(update, context, user_id, text)
+        return
+    
+    # وضعیت افزایش موجودی - وارد کردن مبلغ
+    if state == "awaiting_balance_amount":
+        await handle_balance_amount(update, context, user_id, text)
+        return
+    
+    # وضعیت درخواست نمایندگی
+    if state == "awaiting_agent_payment":
+        await handle_agent_payment(update, context, user_id, text)
+        return
+    
+    # وضعیت درخواست نمایندگی - انتخاب روش
+    if state and state.startswith("awaiting_agent_method_"):
+        await handle_agent_method(update, context, user_id, text)
+        return
+    
+    # ========== سپس هندلرهای ادمین را بررسی کن ==========
     if is_admin(user_id):
+        # دکمه‌های مستقیم ادمین
         if text == "📊 آمار":
             await stats_command(update, context)
             return
@@ -1548,6 +1588,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await user_info_command(update, context)
             return
         
+        # وضعیت‌های ادمین
         if state == "admin_config":
             await handle_admin_config(update, context, user_id, text)
             return
@@ -1609,11 +1650,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_remove_admin(update, context, user_id, text)
             return
     
-    # هندلرهای کاربر عادی
+    # ========== بررسی وضعیت ربات برای کاربران عادی ==========
     if not await get_bot_status():
         await update.message.reply_text("🔴 ربات غیرفعال است")
         return
     
+    # بررسی عضویت در کانال
     if not is_admin(user_id) and not await check_user_membership(user_id):
         kb = InlineKeyboardMarkup([[
             InlineKeyboardButton("📢 عضویت", url=f"https://t.me/{CHANNEL_USERNAME.replace('@','')}"),
@@ -1622,30 +1664,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ ابتدا در {CHANNEL_USERNAME} عضو شوید", reply_markup=kb)
         return
     
-    # هندلرهای وضعیت
-    if state and state.startswith("awaiting_quantity_"):
-        await handle_quantity(update, context, user_id, state, text)
-        return
-    if state and state.startswith("awaiting_coupon_"):
-        await handle_coupon(update, context, user_id, state, text)
-        return
-    if state and state.startswith("awaiting_payment_"):
-        await handle_payment(update, context, user_id, text)
-        return
-    if state == "awaiting_balance_action":
-        await handle_balance_action(update, context, user_id, text)
-        return
-    if state == "awaiting_balance_amount":
-        await handle_balance_amount(update, context, user_id, text)
-        return
-    if state == "awaiting_agent_payment":
-        await handle_agent_payment(update, context, user_id, text)
-        return
-    if state and state.startswith("awaiting_agent_method_"):
-        await handle_agent_method(update, context, user_id, text)
-        return
-    
-    # منوی اصلی
+    # ========== منوی اصلی کاربر ==========
     if text == "🛍️ خرید اشتراک":
         await handle_buy_subscription(update, context, user_id, text)
     elif text == "💰 موجودی":
@@ -1663,15 +1682,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text in ["⭐️ اشتراک اکونومی ⭐️", "💎 اشتراک سوپر فست 💎"]:
         await handle_buy_subscription(update, context, user_id, text)
     else:
-        # اگر هیچکدام از موارد بالا نبود، ممکن است کاربر تعداد وارد کرده باشد
-        if state and state.startswith("awaiting_quantity_"):
-            await handle_quantity(update, context, user_id, state, text)
-        elif state and state.startswith("awaiting_coupon_"):
-            await handle_coupon(update, context, user_id, state, text)
-        elif state and state.startswith("awaiting_payment_"):
-            await handle_payment(update, context, user_id, text)
-        else:
-            await handle_buy_subscription(update, context, user_id, text)
+        # اگر پیام نامشخص بود، پیام خطا بده
+        await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_main_keyboard(await is_user_agent(user_id)))
 
 # ==================== ثبت هندلرها ====================
 application.add_handler(CommandHandler("start", start_with_param))
