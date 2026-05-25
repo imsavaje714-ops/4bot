@@ -50,7 +50,6 @@ logging.basicConfig(
 )
 
 app = FastAPI()
-bot_is_active = True
 
 # ==================== توابع کمکی ====================
 def persian_number(number):
@@ -199,10 +198,6 @@ def get_coupon_recipient_keyboard():
         [KeyboardButton("👤 یک کاربر خاص")],
         [KeyboardButton("↩️ بازگشت به منو")]
     ], resize_keyboard=True)
-
-def get_toggle_status_keyboard():
-    status = "🟢 روشن" if bot_is_active else "🔴 خاموش"
-    return ReplyKeyboardMarkup([[KeyboardButton(f"⚙️ وضعیت ربات: {status}")], [KeyboardButton("↩️ بازگشت به منو")]], resize_keyboard=True)
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
@@ -440,18 +435,17 @@ async def get_available_configs_count(volume: int, subscription_type: str):
     row = await db_execute("SELECT COUNT(*) FROM config_pool WHERE volume = %s AND is_sold = FALSE AND subscription_type = %s", (volume, subscription_type), fetchone=True)
     return row[0] if row else 0
 
+# قفل برای جلوگیری از ارسال دوباره
+_send_locks = set()
+
 async def send_multiple_configs_to_user(subscription_id: int, user_id: int, volume: int, quantity: int, plan: str, bot, subscription_type: str):
-    # قفل برای جلوگیری از ارسال دوباره
     lock_key = f"send_config_{subscription_id}"
-    if hasattr(send_multiple_configs_to_user, "locks") and lock_key in send_multiple_configs_to_user.locks:
+    if lock_key in _send_locks:
         logging.warning(f"Duplicate send attempt blocked for subscription {subscription_id}")
         return False
-    if not hasattr(send_multiple_configs_to_user, "locks"):
-        send_multiple_configs_to_user.locks = set()
-    send_multiple_configs_to_user.locks.add(lock_key)
+    _send_locks.add(lock_key)
     
     try:
-        # بررسی مجدد وضعیت اشتراک
         sub_status = await db_execute("SELECT status FROM subscriptions WHERE id = %s", (subscription_id,), fetchone=True)
         if sub_status and sub_status[0] == 'active':
             logging.info(f"Subscription {subscription_id} already active")
@@ -467,7 +461,7 @@ async def send_multiple_configs_to_user(subscription_id: int, user_id: int, volu
             return True
         return False
     finally:
-        send_multiple_configs_to_user.locks.discard(lock_key)
+        _send_locks.discard(lock_key)
 
 async def check_user_membership(user_id: int) -> bool:
     try:
@@ -531,6 +525,24 @@ async def get_pending_balance_payments():
 async def get_pending_agent_payments():
     rows = await db_execute("SELECT id, user_id, amount, description FROM payments WHERE type = 'agent_registration' AND status = 'pending'", fetch=True)
     return [{"payment_id": r[0], "user_id": r[1], "amount": r[2], "description": r[3]} for r in rows]
+
+async def get_bot_status():
+    row = await db_execute("SELECT is_active FROM bot_status WHERE id = 1", fetchone=True)
+    return row[0] if row else True
+
+async def set_bot_status(active: bool):
+    await db_execute("UPDATE bot_status SET is_active = %s WHERE id = 1", (active,))
+
+async def is_user_banned(user_id):
+    row = await db_execute("SELECT user_id FROM banned_users WHERE user_id = %s", (user_id,), fetchone=True)
+    return row is not None
+
+async def send_long_message(chat_id, text, context, reply_markup=None, parse_mode=None):
+    if len(text) <= 4000:
+        await context.bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode=parse_mode)
+        return
+    for i in range(0, len(text), 4000):
+        await context.bot.send_message(chat_id, text[i:i+4000], reply_markup=reply_markup if i == 0 else None, parse_mode=parse_mode)
 
 # ==================== مدیریت کانفیگ ادمین ====================
 async def add_multiple_configs_to_pool(volume: int, configs: List[str], admin_id: int, sub_type: str):
@@ -638,18 +650,30 @@ async def handle_restore(update, context):
         await update.message.reply_text("❌ فایل نامعتبر", reply_markup=get_admin_main_keyboard())
     user_states.pop(user_id, None)
 
-# ==================== وضعیت ربات ====================
-async def get_bot_status():
-    row = await db_execute("SELECT is_active FROM bot_status WHERE id = 1", fetchone=True)
-    return row[0] if row else True
-
-async def set_bot_status(active: bool):
-    global bot_is_active
-    bot_is_active = active
-    await db_execute("UPDATE bot_status SET is_active = %s WHERE id = 1", (active,))
-
 # ==================== وضعیت کاربر ====================
 user_states = {}
+
+# ==================== توابع ربات (قبل از ثبت هندلرها) ====================
+async def shutdown_command(update, context):
+    if not is_admin(update.effective_user.id):
+        return
+    await set_bot_status(False)
+    await update.message.reply_text("🔴 ربات برای کاربران عادی خاموش شد")
+
+async def startup_command(update, context):
+    if not is_admin(update.effective_user.id):
+        return
+    await set_bot_status(True)
+    await update.message.reply_text("🟢 ربات برای کاربران عادی روشن شد")
+
+async def toggle_status_command(update, context):
+    if not is_admin(update.effective_user.id):
+        return
+    current = await get_bot_status()
+    new_status = not current
+    await set_bot_status(new_status)
+    status_text = "روشن" if new_status else "خاموش"
+    await update.message.reply_text(f"🟢 وضعیت ربات: {status_text}", reply_markup=get_admin_main_keyboard())
 
 # ==================== هندلرها ====================
 application = Application.builder().token(TOKEN).build()
@@ -1007,7 +1031,6 @@ async def admin_callback(update, context):
             await query.edit_message_text("⚠️ پرداخت یافت نشد")
             return
         
-        # حذف دکمه‌ها با ویرایش پیام
         await query.edit_message_reply_markup(reply_markup=None)
         
         await update_payment_status(payment_id, "approved")
@@ -1015,7 +1038,6 @@ async def admin_callback(update, context):
         
         uid, amt, ptype, desc = payment
         
-        # ارسال پیام به کاربر
         if ptype == "buy_subscription":
             await context.bot.send_message(uid, f"✅ پرداخت شما تایید شد! کد: {payment_id}\nدر حال ارسال کانفیگ...")
             sub = await db_execute("SELECT id, volume, quantity, subscription_type FROM subscriptions WHERE payment_id = %s", (payment_id,), fetchone=True)
@@ -1025,7 +1047,6 @@ async def admin_callback(update, context):
         elif ptype == "add_balance":
             await add_balance(uid, amt)
             await context.bot.send_message(uid, f"✅ موجودی شما {format_price(amt)} افزایش یافت")
-            # ارسال پیام به ادمین تاییدکننده
             await query.message.reply_text(f"✅ موجودی کاربر {uid} به میزان {format_price(amt)} افزایش یافت")
         
         elif ptype == "agent_registration":
@@ -1038,7 +1059,6 @@ async def admin_callback(update, context):
         payment_id = int(data.split("_")[1])
         payment = await db_execute("SELECT user_id FROM payments WHERE id = %s", (payment_id,), fetchone=True)
         
-        # حذف دکمه‌ها با ویرایش پیام
         await query.edit_message_reply_markup(reply_markup=None)
         
         if payment:
@@ -1069,15 +1089,6 @@ async def stats_command(update, context):
         f"📤 کانفیگ موجود: {persian_number(stats['available'])}\n"
         f"🟢 وضعیت: {status}"
     )
-
-async def toggle_status_command(update, context):
-    if not is_admin(update.effective_user.id):
-        return
-    current = await get_bot_status()
-    new_status = not current
-    await set_bot_status(new_status)
-    status_text = "روشن" if new_status else "خاموش"
-    await update.message.reply_text(f"🟢 وضعیت ربات: {status_text}", reply_markup=get_admin_main_keyboard())
 
 async def user_info_command(update, context):
     if not is_admin(update.effective_user.id):
@@ -1461,17 +1472,6 @@ async def debug_subscriptions_command(update, context):
         f"👑 ثبت نمایندگی: {persian_number(len(agent_pending))}"
     )
 
-async def is_user_banned(user_id):
-    row = await db_execute("SELECT user_id FROM banned_users WHERE user_id = %s", (user_id,), fetchone=True)
-    return row is not None
-
-async def send_long_message(chat_id, text, context, reply_markup=None, parse_mode=None):
-    if len(text) <= 4000:
-        await context.bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode=parse_mode)
-        return
-    for i in range(0, len(text), 4000):
-        await context.bot.send_message(chat_id, text[i:i+4000], reply_markup=reply_markup if i == 0 else None, parse_mode=parse_mode)
-
 # ==================== وظیفه دوره‌ای ====================
 async def periodic_pending_check():
     while True:
@@ -1525,7 +1525,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # هندلرهای ادمین
     if is_admin(user_id):
-        # دستورات مستقیم ادمین
         if text == "📊 آمار":
             await stats_command(update, context)
             return
@@ -1683,19 +1682,6 @@ application.add_handler(CommandHandler("debug", debug_subscriptions_command))
 application.add_handler(CommandHandler("toggle", toggle_status_command))
 application.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), message_handler))
 application.add_handler(CallbackQueryHandler(admin_callback))
-
-# ==================== توابع shutdown/startup ====================
-async def shutdown_command(update, context):
-    if not is_admin(update.effective_user.id):
-        return
-    await set_bot_status(False)
-    await update.message.reply_text("🔴 ربات برای کاربران عادی خاموش شد")
-
-async def startup_command(update, context):
-    if not is_admin(update.effective_user.id):
-        return
-    await set_bot_status(True)
-    await update.message.reply_text("🟢 ربات برای کاربران عادی روشن شد")
 
 # ==================== webhook ====================
 @app.post(WEBHOOK_PATH)
