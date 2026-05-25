@@ -33,21 +33,27 @@ SUPPORT_USERNAME = "@kavehpro"
 BANK_CARD = "6219861847420634"
 BANK_OWNER = "عرفانی نیا"
 
-# قیمت‌ها (قیمت‌های جدید)
-PRICE_PER_GB = 270000
-DISCOUNTED_PRICE_10GB = 2400000
+# قیمت‌ها (قیمت‌های جدید با تفکیک نوع اشتراک)
+# نوع اشتراک: "economy" (اکونومی) و "superfast" (سوپر فست)
+PRICE_PER_GB_ECONOMY = 169000      # قیمت هر گیگ اکونومی برای کاربر عادی
+PRICE_PER_GB_SUPERFAST = 229000    # قیمت هر گیگ سوپر فست برای کاربر عادی
+DISCOUNTED_PRICE_10GB_ECONOMY = 1690000   # تخفیف 10 گیگ اکونومی
+DISCOUNTED_PRICE_10GB_SUPERFAST = 2290000 # تخفیف 10 گیگ سوپر فست
 
-# قیمت‌های ویژه نمایندگان (قیمت‌های جدید)
-AGENT_PRICE_PER_GB = 230000
-AGENT_DISCOUNTED_PRICE_10GB = 2000000
+# قیمت‌های ویژه نمایندگان
+AGENT_PRICE_PER_GB_ECONOMY = 153000     # قیمت هر گیگ اکونومی برای نماینده
+AGENT_PRICE_PER_GB_SUPERFAST = 212000   # قیمت هر گیگ سوپر فست برای نماینده
+AGENT_DISCOUNTED_PRICE_10GB_ECONOMY = 1530000    # تخفیف 10 گیگ اکونومی نماینده
+AGENT_DISCOUNTED_PRICE_10GB_SUPERFAST = 2120000  # تخفیف 10 گیگ سوپر فست نماینده
 
 # مبلغ نمایندگی
 AGENT_REGISTRATION_FEE = 4000000
 
-CONFIG_NAME = "کانفیگ پر سرعت"
+CONFIG_NAME = "کانفیگ"
 AVAILABLE_VOLUMES = [1, 2, 5, 10]
+AVAILABLE_SUBSCRIPTION_TYPES = ["economy", "superfast"]
 
-RENDER_BASE_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("RAILWAY_STATIC_URL") or "https://kavehvpn.railway.app"
+RENDER_BASE_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("RAILWAY_STATIC_URL") or "https://OnePercentVPN12.railway.app"
 WEBHOOK_PATH = f"/webhook/{TOKEN}"
 WEBHOOK_URL = f"{RENDER_BASE_URL}{WEBHOOK_PATH}"
 
@@ -56,7 +62,7 @@ logging.basicConfig(
     level=logging.INFO,
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler("kaveh_bot.log", encoding="utf-8") if os.path.exists("/tmp") else logging.StreamHandler()
+        logging.FileHandler("OnePercentVPN12_bot.log", encoding="utf-8") if os.path.exists("/tmp") else logging.StreamHandler()
     ]
 )
 
@@ -80,28 +86,74 @@ def english_number(persian_str):
 def format_price(price):
     return persian_number(f"{price:,}") + " تومان"
 
-def get_price_for_volume(volume: int, quantity: int = 1, is_agent: bool = False) -> int:
-    if is_agent:
-        if volume == 10:
-            return AGENT_DISCOUNTED_PRICE_10GB * quantity
-        return volume * quantity * AGENT_PRICE_PER_GB
-    else:
-        if volume == 10:
-            return DISCOUNTED_PRICE_10GB * quantity
-        return volume * quantity * PRICE_PER_GB
+def get_price_for_volume(volume: int, quantity: int = 1, is_agent: bool = False, subscription_type: str = "economy") -> int:
+    """محاسبه قیمت بر اساس حجم، تعداد، وضعیت نمایندگی و نوع اشتراک"""
+    if subscription_type == "superfast":
+        if is_agent:
+            if volume == 10:
+                return AGENT_DISCOUNTED_PRICE_10GB_SUPERFAST * quantity
+            return volume * quantity * AGENT_PRICE_PER_GB_SUPERFAST
+        else:
+            if volume == 10:
+                return DISCOUNTED_PRICE_10GB_SUPERFAST * quantity
+            return volume * quantity * PRICE_PER_GB_SUPERFAST
+    else:  # economy
+        if is_agent:
+            if volume == 10:
+                return AGENT_DISCOUNTED_PRICE_10GB_ECONOMY * quantity
+            return volume * quantity * AGENT_PRICE_PER_GB_ECONOMY
+        else:
+            if volume == 10:
+                return DISCOUNTED_PRICE_10GB_ECONOMY * quantity
+            return volume * quantity * PRICE_PER_GB_ECONOMY
 
-def get_display_text_for_volume(volume: int, is_agent: bool = False) -> str:
-    price = get_price_for_volume(volume, 1, is_agent)
+def get_display_text_for_volume(volume: int, is_agent: bool = False, subscription_type: str = "economy") -> str:
+    """دریافت متن نمایشی برای حجم و نوع اشتراک"""
+    price = get_price_for_volume(volume, 1, is_agent, subscription_type)
+    
+    if subscription_type == "economy":
+        type_name = "اکونومی ⭐️"
+    else:
+        type_name = "سوپر فست 💎"
+    
     if volume == 10:
         if is_agent:
-            return f"{persian_number(volume)} گیگ | {format_price(price)} | نماینده ویژه 💎"
+            return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)} | نماینده ویژه"
         else:
-            return f"{persian_number(volume)} گیگ | {format_price(price)} | تخفیف ویژه | VIP استار ⭐️"
+            return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)} | تخفیف ویژه"
     else:
         if is_agent:
-            return f"{persian_number(volume)} گیگ | {format_price(price)} | نماینده ⭐️"
+            return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)} | نماینده"
         else:
-            return f"{persian_number(volume)} گیگ | {format_price(price)} | VIP استار ⭐️"
+            return f"{persian_number(volume)} گیگ {type_name} | {format_price(price)}"
+
+def get_subscription_type_keyboard():
+    """کیبورد انتخاب نوع اشتراک"""
+    keyboard = [
+        [KeyboardButton("⭐️ اشتراک اکونومی ⭐️")],
+        [KeyboardButton("💎 اشتراک سوپر فست 💎")],
+        [KeyboardButton("↩️ بازگشت به منو")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def get_admin_config_keyboard():
+    """کیبورد مدیریت کانفیگ برای ادمین با تفکیک نوع اشتراک"""
+    keyboard = [
+        [KeyboardButton("➕ اضافه کردن کانفیگ اکونومی")],
+        [KeyboardButton("➕ اضافه کردن کانفیگ سوپر فست")],
+        [KeyboardButton("📊 مشاهده موجودی کانفیگ‌ها")],
+        [KeyboardButton("📋 لیست تمام کانفیگ‌ها")],
+        [KeyboardButton("↩️ بازگشت به منو")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def get_volume_selection_keyboard():
+    keyboard = [
+        [KeyboardButton("۱ گیگ"), KeyboardButton("۲ گیگ")],
+        [KeyboardButton("۵ گیگ"), KeyboardButton("۱۰ گیگ")],
+        [KeyboardButton("↩️ انصراف")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
@@ -123,7 +175,7 @@ async def add_admin(new_admin_id: int) -> bool:
 
 async def remove_admin(admin_id: int) -> bool:
     global ADMIN_IDS
-    if admin_id in [6056483071, 6778206989]:
+    if admin_id in [6056483071, 7241184581]:
         return False
     if admin_id in ADMIN_IDS:
         ADMIN_IDS.remove(admin_id)
@@ -222,7 +274,7 @@ async def load_bank_settings():
 # ---------- endpoint سلامت ----------
 @app.get("/")
 async def health_check():
-    return {"status": "up", "message": "Kaveh VPN Bot is running!", "timestamp": datetime.now().isoformat()}
+    return {"status": "up", "message": "OnePercentVPN12 Bot is running!", "timestamp": datetime.now().isoformat()}
 
 @app.get("/health")
 async def health():
@@ -342,7 +394,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     start_date TIMESTAMP,
     duration_days INTEGER,
     volume INTEGER,
-    quantity INTEGER DEFAULT 1
+    quantity INTEGER DEFAULT 1,
+    subscription_type TEXT DEFAULT 'economy'
 )
 """
 
@@ -366,7 +419,8 @@ CREATE TABLE IF NOT EXISTS config_pool (
     sold_to_user BIGINT,
     sold_at TIMESTAMP,
     created_by BIGINT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    subscription_type TEXT DEFAULT 'economy'
 )
 """
 
@@ -420,10 +474,12 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS start_date TIMESTAMP;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS duration_days INTEGER;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS volume INTEGER;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS subscription_type TEXT DEFAULT 'economy';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_agent BOOLEAN DEFAULT FALSE;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_method TEXT;
+ALTER TABLE config_pool ADD COLUMN IF NOT EXISTS subscription_type TEXT DEFAULT 'economy';
 
 UPDATE subscriptions SET start_date = COALESCE(start_date, CURRENT_TIMESTAMP), duration_days = 30
 WHERE start_date IS NULL OR duration_days IS NULL;
@@ -454,7 +510,7 @@ async def create_tables():
         await load_admins_from_db()
         await load_bank_settings()
         
-        for admin_id in [6056483071, 6778206989]:
+        for admin_id in [6056483071, 7241184581]:
             await db_execute(
                 "INSERT INTO admins (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING",
                 (admin_id,)
@@ -504,10 +560,10 @@ def get_main_keyboard(is_agent: bool = False):
 def get_back_keyboard():
     return ReplyKeyboardMarkup([[KeyboardButton("↩️ بازگشت به منو")]], resize_keyboard=True)
 
-def get_subscription_keyboard(is_agent: bool = False):
+def get_subscription_keyboard(is_agent: bool = False, subscription_type: str = "economy"):
     keyboard = []
     for volume in AVAILABLE_VOLUMES:
-        display_text = get_display_text_for_volume(volume, is_agent)
+        display_text = get_display_text_for_volume(volume, is_agent, subscription_type)
         keyboard.append([KeyboardButton(display_text)])
     keyboard.append([KeyboardButton("↩️ بازگشت به منو")])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -526,23 +582,6 @@ def get_connection_guide_keyboard():
 def get_coupon_recipient_keyboard():
     return ReplyKeyboardMarkup([[KeyboardButton("🌎 همه کاربران")], [KeyboardButton("👤 یک کاربر خاص")], [KeyboardButton("🎲 درصد مشخصی از کاربران")], [KeyboardButton("↩️ بازگشت به منو")]], resize_keyboard=True)
 
-def get_admin_config_keyboard():
-    keyboard = [
-        [KeyboardButton("➕ اضافه کردن کانفیگ جدید")],
-        [KeyboardButton("📊 مشاهده موجودی کانفیگ‌ها")],
-        [KeyboardButton("📋 لیست تمام کانفیگ‌ها")],
-        [KeyboardButton("↩️ بازگشت به منو")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-def get_volume_selection_keyboard():
-    keyboard = [
-        [KeyboardButton("۱ گیگ"), KeyboardButton("۲ گیگ")],
-        [KeyboardButton("۵ گیگ"), KeyboardButton("۱۰ گیگ")],
-        [KeyboardButton("↩️ انصراف")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
 def get_admin_main_keyboard():
     keyboard = [
         [KeyboardButton("🛍️ خرید اشتراک")],
@@ -551,7 +590,7 @@ def get_admin_main_keyboard():
         [KeyboardButton("🗂️ اشتراک‌های من"), KeyboardButton("📚 آموزش اتصال")],
         [KeyboardButton("👨‍💼 درخواست نمایندگی")],
         [KeyboardButton("⚙️ مدیریت ادمین"), KeyboardButton("💳 مدیریت کارت")],
-        [KeyboardButton("👥 مدیریت کاربران")]
+        [KeyboardButton("👥 مدیریت کاربران"), KeyboardButton("⚙️ مدیریت کانفیگ")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -619,11 +658,15 @@ def parse_configs_from_text(text: str) -> List[str]:
             configs.append(line)
     return configs
 
-def extract_volume_from_display_text(text: str) -> Optional[int]:
+def extract_volume_from_display_text(text: str) -> Tuple[Optional[int], Optional[str]]:
+    """استخراج حجم و نوع اشتراک از متن دکمه"""
     for volume in AVAILABLE_VOLUMES:
         if text.startswith(f"{persian_number(volume)} گیگ"):
-            return volume
-    return None
+            if "اکونومی" in text:
+                return volume, "economy"
+            elif "سوپر فست" in text:
+                return volume, "superfast"
+    return None, None
 
 # ---------- توابع DB ----------
 async def check_user_membership(user_id: int) -> bool:
@@ -709,9 +752,9 @@ async def add_balance_payment(user_id, amount, payment_method, description=""):
     except:
         return None
 
-async def add_subscription(user_id, payment_id, plan, volume, quantity=1):
+async def add_subscription(user_id, payment_id, plan, volume, quantity, subscription_type):
     try:
-        await db_execute("INSERT INTO subscriptions (user_id, payment_id, plan, status, start_date, duration_days, volume, quantity) VALUES (%s, %s, %s, 'pending', CURRENT_TIMESTAMP, 30, %s, %s)", (user_id, payment_id, plan, volume, quantity))
+        await db_execute("INSERT INTO subscriptions (user_id, payment_id, plan, status, start_date, duration_days, volume, quantity, subscription_type) VALUES (%s, %s, %s, 'pending', CURRENT_TIMESTAMP, 30, %s, %s, %s)", (user_id, payment_id, plan, volume, quantity, subscription_type))
     except Exception as e:
         logging.error(f"Error adding subscription: {e}")
 
@@ -729,11 +772,11 @@ async def update_payment_status(payment_id, status):
 
 async def get_user_subscriptions(user_id):
     try:
-        rows = await db_execute("SELECT id, plan, config, status, payment_id, start_date, duration_days, volume, quantity FROM subscriptions WHERE user_id = %s ORDER BY status DESC, start_date DESC", (user_id,), fetch=True)
+        rows = await db_execute("SELECT id, plan, config, status, payment_id, start_date, duration_days, volume, quantity, subscription_type FROM subscriptions WHERE user_id = %s ORDER BY status DESC, start_date DESC", (user_id,), fetch=True)
         current_time = datetime.now()
         subs = []
         for row in rows:
-            sub_id, plan, config, status, payment_id, start_date, duration_days, volume, quantity = row
+            sub_id, plan, config, status, payment_id, start_date, duration_days, volume, quantity, subscription_type = row
             start_date = start_date or current_time
             duration_days = duration_days or 30
             if status == "active":
@@ -741,7 +784,7 @@ async def get_user_subscriptions(user_id):
                 if current_time > end_date:
                     await db_execute("UPDATE subscriptions SET status = 'inactive' WHERE id = %s", (sub_id,))
                     status = "inactive"
-            subs.append({'id': sub_id, 'plan': plan, 'config': config, 'status': status, 'payment_id': payment_id, 'start_date': start_date, 'duration_days': duration_days, 'volume': volume, 'quantity': quantity, 'end_date': start_date + timedelta(days=duration_days)})
+            subs.append({'id': sub_id, 'plan': plan, 'config': config, 'status': status, 'payment_id': payment_id, 'start_date': start_date, 'duration_days': duration_days, 'volume': volume, 'quantity': quantity, 'subscription_type': subscription_type, 'end_date': start_date + timedelta(days=duration_days)})
         return subs
     except:
         return []
@@ -867,49 +910,49 @@ async def get_total_income() -> int:
 
 async def get_total_configs_sold() -> int:
     try:
-        row = await db_execute("SELECT COUNT(*) FROM config_pool WHERE is_sold = TRUE", fetchone=True)
+        row = await db_execute("SELECT COUNT(*) FROM config_pool WHERE is_sold = TRUE", fetch=True)
         return row[0] if row else 0
     except:
         return 0
 
 # ---------- توابع مدیریت کانفیگ ----------
-async def add_config_to_pool(volume: int, config_text: str, admin_id: int) -> bool:
+async def add_config_to_pool(volume: int, config_text: str, admin_id: int, subscription_type: str = "economy") -> bool:
     try:
         await db_execute(
-            "INSERT INTO config_pool (volume, config_text, created_by, is_sold) VALUES (%s, %s, %s, FALSE)",
-            (volume, config_text, admin_id)
+            "INSERT INTO config_pool (volume, config_text, created_by, is_sold, subscription_type) VALUES (%s, %s, %s, FALSE, %s)",
+            (volume, config_text, admin_id, subscription_type)
         )
         return True
     except Exception as e:
         logging.error(f"Error adding config to pool: {e}")
         return False
 
-async def add_multiple_configs_to_pool(volume: int, configs_text: List[str], admin_id: int) -> Tuple[int, int]:
+async def add_multiple_configs_to_pool(volume: int, configs_text: List[str], admin_id: int, subscription_type: str = "economy") -> Tuple[int, int]:
     success_count = 0
     fail_count = 0
     for config_text in configs_text:
-        if await add_config_to_pool(volume, config_text, admin_id):
+        if await add_config_to_pool(volume, config_text, admin_id, subscription_type):
             success_count += 1
         else:
             fail_count += 1
     return success_count, fail_count
 
-async def get_available_configs_count(volume: int) -> int:
+async def get_available_configs_count(volume: int, subscription_type: str = "economy") -> int:
     try:
         row = await db_execute(
-            "SELECT COUNT(*) FROM config_pool WHERE volume = %s AND is_sold = FALSE",
-            (volume,), fetchone=True
+            "SELECT COUNT(*) FROM config_pool WHERE volume = %s AND is_sold = FALSE AND subscription_type = %s",
+            (volume, subscription_type), fetchone=True
         )
         return row[0] if row else 0
     except Exception as e:
         logging.error(f"Error getting available configs count: {e}")
         return 0
 
-async def get_available_configs(volume: int, quantity: int) -> Optional[List[Dict]]:
+async def get_available_configs(volume: int, quantity: int, subscription_type: str = "economy") -> Optional[List[Dict]]:
     try:
         rows = await db_execute(
-            "SELECT id, config_text FROM config_pool WHERE volume = %s AND is_sold = FALSE ORDER BY id LIMIT %s",
-            (volume, quantity), fetch=True
+            "SELECT id, config_text FROM config_pool WHERE volume = %s AND is_sold = FALSE AND subscription_type = %s ORDER BY id LIMIT %s",
+            (volume, subscription_type, quantity), fetch=True
         )
         if rows and len(rows) >= quantity:
             return [{"id": row[0], "config_text": row[1]} for row in rows]
@@ -937,15 +980,18 @@ async def get_config_pool_stats() -> Dict:
         available = await db_execute("SELECT COUNT(*) FROM config_pool WHERE is_sold = FALSE", fetchone=True)
         
         volume_stats = await db_execute(
-            "SELECT volume, COUNT(*) as total, SUM(CASE WHEN is_sold THEN 1 ELSE 0 END) as sold FROM config_pool GROUP BY volume ORDER BY volume",
+            "SELECT volume, subscription_type, COUNT(*) as total, SUM(CASE WHEN is_sold THEN 1 ELSE 0 END) as sold FROM config_pool GROUP BY volume, subscription_type ORDER BY volume, subscription_type",
             fetch=True
         )
         
         stats_by_volume = []
         for row in volume_stats:
-            volume, total_count, sold_count = row
+            volume, sub_type, total_count, sold_count = row
+            type_name = "اکونومی" if sub_type == "economy" else "سوپر فست"
             stats_by_volume.append({
                 "volume": volume,
+                "subscription_type": sub_type,
+                "type_name": type_name,
                 "total": total_count,
                 "sold": sold_count,
                 "available": total_count - sold_count
@@ -964,11 +1010,12 @@ async def get_config_pool_stats() -> Dict:
 async def get_all_configs() -> List[Dict]:
     try:
         rows = await db_execute(
-            "SELECT id, volume, config_text, is_sold, sold_to_user, created_by, created_at, sold_at FROM config_pool ORDER BY created_at DESC",
+            "SELECT id, volume, config_text, is_sold, sold_to_user, created_by, created_at, sold_at, subscription_type FROM config_pool ORDER BY created_at DESC",
             fetch=True
         )
         configs = []
         for row in rows:
+            type_name = "اکونومی" if row[8] == "economy" else "سوپر فست"
             configs.append({
                 "id": row[0],
                 "volume": row[1],
@@ -977,7 +1024,9 @@ async def get_all_configs() -> List[Dict]:
                 "sold_to_user": row[4],
                 "created_by": row[5],
                 "created_at": row[6],
-                "sold_at": row[7]
+                "sold_at": row[7],
+                "subscription_type": row[8],
+                "type_name": type_name
             })
         return configs
     except Exception as e:
@@ -987,7 +1036,7 @@ async def get_all_configs() -> List[Dict]:
 async def get_pending_subscriptions() -> List[Dict]:
     try:
         rows = await db_execute(
-            "SELECT s.id, s.user_id, s.volume, s.plan, s.quantity, p.id as payment_id FROM subscriptions s JOIN payments p ON s.payment_id = p.id WHERE s.status = 'pending' AND p.status = 'approved'",
+            "SELECT s.id, s.user_id, s.volume, s.plan, s.quantity, s.subscription_type, p.id as payment_id FROM subscriptions s JOIN payments p ON s.payment_id = p.id WHERE s.status = 'pending' AND p.status = 'approved'",
             fetch=True
         )
         pending = []
@@ -998,7 +1047,8 @@ async def get_pending_subscriptions() -> List[Dict]:
                 "volume": row[2],
                 "plan": row[3],
                 "quantity": row[4],
-                "payment_id": row[5]
+                "subscription_type": row[5],
+                "payment_id": row[6]
             })
         return pending
     except Exception as e:
@@ -1043,7 +1093,7 @@ async def get_pending_agent_payments() -> List[Dict]:
         logging.error(f"Error getting pending agent payments: {e}")
         return []
 
-# ==================== توابع بکاپ (جدید) ====================
+# ==================== توابع بکاپ ====================
 
 # ایجاد scheduler برای بکاپ خودکار
 scheduler = AsyncIOScheduler(timezone=pytz.timezone('Asia/Tehran'))
@@ -1052,7 +1102,7 @@ async def backup_config_pool_only() -> Dict:
     """گرفتن بکاپ فقط از استخر کانفیگ‌ها (config_pool) - فقط کانفیگ‌های فروخته نشده"""
     try:
         configs = await db_execute(
-            "SELECT id, volume, config_text, is_sold, created_by, created_at FROM config_pool WHERE is_sold = FALSE ORDER BY id",
+            "SELECT id, volume, config_text, is_sold, created_by, created_at, subscription_type FROM config_pool WHERE is_sold = FALSE ORDER BY id",
             fetch=True
         )
         
@@ -1068,7 +1118,8 @@ async def backup_config_pool_only() -> Dict:
                         "config_text": row[2],
                         "is_sold": row[3],
                         "created_by": row[4],
-                        "created_at": str(row[5]) if row[5] else None
+                        "created_at": str(row[5]) if row[5] else None,
+                        "subscription_type": row[6]
                     }
                     for row in configs
                 ]
@@ -1137,9 +1188,14 @@ async def create_and_send_backup():
         volumes = {}
         for item in backup_data['config_pool']['items']:
             vol = item['volume']
-            volumes[vol] = volumes.get(vol, 0) + 1
+            sub_type = item.get('subscription_type', 'economy')
+            type_name = "اکونومی" if sub_type == "economy" else "سوپر فست"
+            key = f"{vol}_{sub_type}"
+            if key not in volumes:
+                volumes[key] = {"count": 0, "volume": vol, "type_name": type_name}
+            volumes[key]["count"] += 1
         
-        volume_text = "\n".join([f"🔹 {persian_number(v)} گیگ: {persian_number(c)} عدد" for v, c in volumes.items()])
+        volume_text = "\n".join([f"🔹 {persian_number(v['volume'])} گیگ {v['type_name']}: {persian_number(v['count'])} عدد" for v in volumes.values()])
         
         # ایجاد فایل موقت
         temp_file = f"/tmp/config_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -1191,7 +1247,7 @@ async def start_backup_scheduler():
     scheduler.start()
     logging.info("✅ Scheduler بکاپ راه‌اندازی شد - هر شب ساعت ۲۳:۵۹ بکاپ گرفته می‌شود")
 
-# ==================== دستورات بکاپ (جدید) ====================
+# ==================== دستورات بکاپ ====================
 
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دستور تهیه بکاپ فوری از استخر کانفیگ‌ها (فقط ادمین)"""
@@ -1213,9 +1269,14 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     volumes = {}
     for item in backup_data['config_pool']['items']:
         vol = item['volume']
-        volumes[vol] = volumes.get(vol, 0) + 1
+        sub_type = item.get('subscription_type', 'economy')
+        type_name = "اکونومی" if sub_type == "economy" else "سوپر فست"
+        key = f"{vol}_{sub_type}"
+        if key not in volumes:
+            volumes[key] = {"count": 0, "volume": vol, "type_name": type_name}
+        volumes[key]["count"] += 1
     
-    volume_text = "\n".join([f"🔹 {persian_number(v)} گیگ: {persian_number(c)} عدد" for v, c in volumes.items()])
+    volume_text = "\n".join([f"🔹 {persian_number(v['volume'])} گیگ {v['type_name']}: {persian_number(v['count'])} عدد" for v in volumes.values()])
     
     if len(backup_json) > 4000:
         file_io = io.BytesIO(backup_json.encode('utf-8'))
@@ -1244,7 +1305,7 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ بکاپ با موفقیت تهیه شد!")
 
 # ---------- توابع مدیریت کانفیگ و غیره ----------
-async def send_multiple_configs_to_user(subscription_id: int, user_id: int, volume: int, quantity: int, plan: str, bot) -> bool:
+async def send_multiple_configs_to_user(subscription_id: int, user_id: int, volume: int, quantity: int, plan: str, bot, subscription_type: str = "economy") -> bool:
     existing_config = await db_execute(
         "SELECT config FROM subscriptions WHERE id = %s AND config IS NOT NULL AND status = 'active'",
         (subscription_id,), fetchone=True
@@ -1253,7 +1314,7 @@ async def send_multiple_configs_to_user(subscription_id: int, user_id: int, volu
         logging.info(f"Subscription {subscription_id} already has config, skipping duplicate send")
         return True
     
-    configs = await get_available_configs(volume, quantity)
+    configs = await get_available_configs(volume, quantity, subscription_type)
     
     if configs and len(configs) == quantity:
         configs_text = "\n\n".join([cfg['config_text'] for cfg in configs])
@@ -1262,7 +1323,8 @@ async def send_multiple_configs_to_user(subscription_id: int, user_id: int, volu
         await update_subscription_config(subscription_id, configs_text)
         await mark_configs_as_sold(config_ids, user_id)
         
-        message = f"✅ اشتراک {plan} شما فعال شد!\n\n"
+        type_name = "اکونومی ⭐️" if subscription_type == "economy" else "سوپر فست 💎"
+        message = f"✅ اشتراک {type_name} {plan} شما فعال شد!\n\n"
         message += f"📦 تعداد: {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگی\n\n"
         message += f"🔐 کانفیگ‌های شما:\n```\n{configs_text}\n```"
         
@@ -1273,19 +1335,20 @@ async def send_multiple_configs_to_user(subscription_id: int, user_id: int, volu
                 if user_id not in ADMIN_IDS:
                     await bot.send_message(
                         admin_id,
-                        f"✅ {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگ برای کاربر {user_id} ارسال شد."
+                        f"✅ {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگ {type_name} برای کاربر {user_id} ارسال شد."
                     )
             except:
                 pass
         return True
     else:
-        available_count = await get_available_configs_count(volume)
+        available_count = await get_available_configs_count(volume, subscription_type)
+        type_name = "اکونومی" if subscription_type == "economy" else "سوپر فست"
         if user_id not in ADMIN_IDS:
             for admin_id in ADMIN_IDS:
                 try:
                     await bot.send_message(
                         admin_id,
-                        f"⚠️ کاربر {user_id} درخواست {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگ دارد اما فقط {persian_number(available_count)} عدد موجود است!"
+                        f"⚠️ کاربر {user_id} درخواست {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگ {type_name} دارد اما فقط {persian_number(available_count)} عدد موجود است!"
                     )
                 except:
                     pass
@@ -1311,7 +1374,8 @@ async def periodic_pending_check(bot):
                         sub['volume'], 
                         sub['quantity'], 
                         sub['plan'], 
-                        bot
+                        bot,
+                        sub['subscription_type']
                     )
             
             processed_in_cycle.clear()
@@ -1375,15 +1439,20 @@ async def stats_command(update, context):
     config_stats = await get_config_pool_stats()
     banned = await db_execute("SELECT COUNT(*) FROM banned_users", fetchone=True)
     
+    # تفکیک آمار کانفیگ‌ها بر اساس نوع
+    eco_available = sum([s['available'] for s in config_stats['by_volume'] if s['subscription_type'] == 'economy'])
+    super_available = sum([s['available'] for s in config_stats['by_volume'] if s['subscription_type'] == 'superfast'])
+    
     await update.message.reply_text(
-        f"📊 آمار ربات کاوه وی‌پی‌ان 📊\n"
+        f"📊 آمار ربات OnePercentVPN12 📊\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👥 کل کاربران: {persian_number(total_users[0]) if total_users else '۰'} نفر\n"
         f"👑 نمایندگان: {persian_number(agents[0]) if agents else '۰'} نفر\n"
         f"🚫 کاربران بن شده: {persian_number(banned[0]) if banned else '۰'} نفر\n"
         f"💰 مجموع درآمد: {format_price(total_income)}\n"
         f"📦 کانفیگ‌های فروخته شده: {persian_number(total_configs_sold)} عدد\n"
-        f"📤 کانفیگ‌های موجود: {persian_number(config_stats['available'])} عدد\n"
+        f"📤 کانفیگ‌های موجود اکونومی: {persian_number(eco_available)} عدد\n"
+        f"📤 کانفیگ‌های موجود سوپر فست: {persian_number(super_available)} عدد\n"
         f"🟢 وضعیت ربات: {'روشن' if await get_bot_status() else 'خاموش'}\n"
         f"━━━━━━━━━━━━━━━━━━━━"
     )
@@ -1459,7 +1528,7 @@ async def handle_remove_user(update, context, user_id, text):
             try:
                 await context.bot.send_message(
                     target_id,
-                    "🚫 شما توسط ادمین از ربات کاوه وی‌پی‌ان بن شده‌اید و دیگر نمی‌توانید از خدمات استفاده کنید."
+                    "🚫 شما توسط ادمین از ربات OnePercentVPN12 بن شده‌اید و دیگر نمی‌توانید از خدمات استفاده کنید."
                 )
             except:
                 pass
@@ -1497,7 +1566,7 @@ async def handle_unban_user(update, context, user_id, text):
                 await context.bot.send_message(
                     target_id,
                     "✅ بن شما توسط ادمین رفع شد.\n\n"
-                    "🎉 می‌توانید مجدداً از ربات کاوه وی‌پی‌ان استفاده کنید.\n"
+                    "🎉 می‌توانید مجدداً از ربات OnePercentVPN12 استفاده کنید.\n"
                     "لطفاً با دستور /start مجدداً شروع کنید."
                 )
             except Exception as e:
@@ -1622,7 +1691,8 @@ async def debug_subscriptions_command(update, context):
     if pending:
         response += "📋 لیست اشتراک‌های در انتظار:\n"
         for p in pending:
-            response += f"🆔 {p['subscription_id']} | کاربر {p['user_id']} | {p['volume']} گیگ x {p['quantity']}\n"
+            type_name = "اکونومی" if p['subscription_type'] == "economy" else "سوپر فست"
+            response += f"🆔 {p['subscription_id']} | کاربر {p['user_id']} | {type_name} | {p['volume']} گیگ x {p['quantity']}\n"
     else:
         response += "✅ هیچ اشتراک در انتظاری وجود ندارد."
     
@@ -1788,7 +1858,7 @@ async def handle_admin_management(update, context, user_id, text):
         await update.message.reply_text("🆔 آیدی عددی کاربر جدید را وارد کنید:")
         user_states[user_id] = "awaiting_new_admin_id"
     elif text == "➖ حذف ادمین":
-        admins_list = "\n".join([f"🆔 {aid}" for aid in ADMIN_IDS if aid not in [6056483071, 6778206989]])
+        admins_list = "\n".join([f"🆔 {aid}" for aid in ADMIN_IDS if aid not in [6056483071, 7241184581]])
         if not admins_list:
             await update.message.reply_text("📂 هیچ ادمین قابل حذفی وجود ندارد.", reply_markup=get_admin_management_keyboard())
             return
@@ -1815,7 +1885,7 @@ async def handle_add_new_admin(update, context, user_id, text):
                 try:
                     await context.bot.send_message(
                         new_admin_id,
-                        "🎉 شما به عنوان ادمین ربات کاوه وی‌پی‌ان اضافه شدید!\nاکنون به تمام دستورات مدیریتی دسترسی دارید."
+                        "🎉 شما به عنوان ادمین ربات OnePercentVPN12 اضافه شدید!\nاکنون به تمام دستورات مدیریتی دسترسی دارید."
                     )
                 except:
                     pass
@@ -1828,7 +1898,7 @@ async def handle_add_new_admin(update, context, user_id, text):
 async def handle_remove_admin(update, context, user_id, text):
     try:
         target_id = int(text)
-        if target_id in [6056483071, 6778206989]:
+        if target_id in [6056483071, 7241184581]:
             await update.message.reply_text("⚠️ حذف ادمین‌های اولیه امکان‌پذیر نیست.", reply_markup=get_admin_management_keyboard())
         elif target_id not in ADMIN_IDS:
             await update.message.reply_text("⚠️ این کاربر ادمین نیست.", reply_markup=get_admin_management_keyboard())
@@ -1943,18 +2013,21 @@ async def handle_set_active_card(update, context, user_id, text):
     user_states.pop(user_id, None)
 
 async def handle_admin_config_action(update, context, user_id, text):
-    if text == "➕ اضافه کردن کانفیگ جدید":
-        await update.message.reply_text("📊 حجم کانفیگ را انتخاب کنید:", reply_markup=get_volume_selection_keyboard())
-        user_states[user_id] = "awaiting_config_volume_selection"
+    if text == "➕ اضافه کردن کانفیگ اکونومی":
+        await update.message.reply_text("📊 حجم کانفیگ اکونومی را انتخاب کنید:", reply_markup=get_volume_selection_keyboard())
+        user_states[user_id] = "awaiting_config_volume_selection_economy"
+    elif text == "➕ اضافه کردن کانفیگ سوپر فست":
+        await update.message.reply_text("📊 حجم کانفیگ سوپر فست را انتخاب کنید:", reply_markup=get_volume_selection_keyboard())
+        user_states[user_id] = "awaiting_config_volume_selection_superfast"
     elif text == "📊 مشاهده موجودی کانفیگ‌ها":
         stats = await get_config_pool_stats()
         response = f"📊 آمار استخر کانفیگ‌ها\n\n"
         response += f"📦 مجموع کانفیگ‌ها: {persian_number(stats['total'])}\n"
         response += f"✅ فروخته شده: {persian_number(stats['sold'])}\n"
         response += f"📤 موجود: {persian_number(stats['available'])}\n\n"
-        response += f"📈 موجودی به تفکیک حجم:\n"
+        response += f"📈 موجودی به تفکیک حجم و نوع:\n"
         for vol_stat in stats['by_volume']:
-            response += f"🔹 {persian_number(vol_stat['volume'])} گیگ: {persian_number(vol_stat['available'])} عدد موجود / {persian_number(vol_stat['sold'])} عدد فروخته شده\n"
+            response += f"🔹 {persian_number(vol_stat['volume'])} گیگ {vol_stat['type_name']}: {persian_number(vol_stat['available'])} عدد موجود / {persian_number(vol_stat['sold'])} عدد فروخته شده\n"
         await send_long_message(user_id, response, context)
         await update.message.reply_text("⚙️ پنل مدیریت کانفیگ‌ها:", reply_markup=get_admin_config_keyboard())
     elif text == "📋 لیست تمام کانفیگ‌ها":
@@ -1966,7 +2039,7 @@ async def handle_admin_config_action(update, context, user_id, text):
         for cfg in configs:
             status = "✅ فروخته شده" if cfg['is_sold'] else "📤 موجود"
             sold_to = f" به کاربر {cfg['sold_to_user']}" if cfg['sold_to_user'] else ""
-            response += f"🆔 {cfg['id']} | {persian_number(cfg['volume'])} گیگ | {status}{sold_to}\n"
+            response += f"🆔 {cfg['id']} | {persian_number(cfg['volume'])} گیگ {cfg['type_name']} | {status}{sold_to}\n"
             response += f"🔐 کانفیگ: {cfg['config_text'][:50]}...\n"
             response += "────────────────\n"
             if len(response) > 3500:
@@ -1981,7 +2054,7 @@ async def handle_admin_config_action(update, context, user_id, text):
     else:
         await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_admin_config_keyboard())
 
-async def handle_config_volume_selection(update, context, user_id, text):
+async def handle_config_volume_selection(update, context, user_id, state, text):
     volume_map = {
         "۱ گیگ": 1,
         "۲ گیگ": 2,
@@ -1990,8 +2063,14 @@ async def handle_config_volume_selection(update, context, user_id, text):
     }
     if text in volume_map:
         volume = volume_map[text]
-        user_states[user_id] = f"awaiting_config_text_{volume}"
-        await update.message.reply_text(f"🔐 لطفاً کانفیگ(های) {text} را ارسال کنید.\n(هر کانفیگ در یک خط جداگانه)", reply_markup=get_back_keyboard())
+        if "economy" in state:
+            subscription_type = "economy"
+            type_name = "اکونومی"
+        else:
+            subscription_type = "superfast"
+            type_name = "سوپر فست"
+        user_states[user_id] = f"awaiting_config_text_{volume}_{subscription_type}"
+        await update.message.reply_text(f"🔐 لطفاً کانفیگ(های) {text} {type_name} را ارسال کنید.\n(هر کانفیگ در یک خط جداگانه)", reply_markup=get_back_keyboard())
     elif text == "↩️ انصراف":
         await update.message.reply_text("⚙️ پنل مدیریت کانفیگ‌ها:", reply_markup=get_admin_config_keyboard())
         user_states.pop(user_id, None)
@@ -2000,7 +2079,11 @@ async def handle_config_volume_selection(update, context, user_id, text):
 
 async def handle_config_text(update, context, user_id, state, text):
     try:
-        volume = int(state.split("_")[3])
+        parts = state.split("_")
+        volume = int(parts[3])
+        subscription_type = parts[4]
+        type_name = "اکونومی" if subscription_type == "economy" else "سوپر فست"
+        
         config_text = update.message.text
         if not config_text:
             await update.message.reply_text("⚠️ لطفاً کانفیگ را به صورت متن ارسال کنید:", reply_markup=get_back_keyboard())
@@ -2011,11 +2094,11 @@ async def handle_config_text(update, context, user_id, state, text):
             await update.message.reply_text("⚠️ هیچ کانفیگ معتبری یافت نشد.", reply_markup=get_back_keyboard())
             return
         
-        success_count, fail_count = await add_multiple_configs_to_pool(volume, configs, user_id)
+        success_count, fail_count = await add_multiple_configs_to_pool(volume, configs, user_id, subscription_type)
         
         if success_count > 0:
             await update.message.reply_text(
-                f"✅ {persian_number(success_count)} کانفیگ {persian_number(volume)} گیگ با موفقیت به استخر اضافه شد.\n"
+                f"✅ {persian_number(success_count)} کانفیگ {persian_number(volume)} گیگ {type_name} با موفقیت به استخر اضافه شد.\n"
                 f"{'❌ ' + persian_number(fail_count) + ' کانفیگ ناموفق' if fail_count > 0 else ''}",
                 reply_markup=get_admin_config_keyboard()
             )
@@ -2128,7 +2211,7 @@ async def start(update, context):
         invited_by = context.user_data.get("invited_by")
         await ensure_user(user.id, user.username or "", invited_by)
         await update.message.reply_text(
-            "🌐 به ربات کاوه وی‌پی‌ان خوش آمدید!\n\n✅ شما به عنوان ادمین به تمام امکانات دسترسی دارید.",
+            "🌐 به ربات OnePercentVPN12 خوش آمدید!\n\n✅ شما به عنوان ادمین به تمام امکانات دسترسی دارید.",
             reply_markup=get_admin_main_keyboard()
         )
         user_states.pop(user.id, None)
@@ -2144,7 +2227,7 @@ async def start(update, context):
     invited_by = context.user_data.get("invited_by")
     await ensure_user(user.id, user.username or "", invited_by)
     is_agent = await is_user_agent(user.id)
-    await update.message.reply_text("🌐 به ربات کاوه وی‌پی‌ان خوش آمدید!", reply_markup=get_main_keyboard(is_agent))
+    await update.message.reply_text("🌐 به ربات OnePercentVPN12 خوش آمدید!", reply_markup=get_main_keyboard(is_agent))
     user_states.pop(user.id, None)
 
 async def start_with_param(update, context):
@@ -2172,7 +2255,7 @@ async def check_membership_callback(update, context):
     if is_member:
         invited_by = context.user_data.get("invited_by")
         await ensure_user(user.id, user.username or "", invited_by)
-        await query.edit_message_text("✅ عضویت شما تأیید شد!\n🌐 به ربات کاوه وی‌پی‌ان خوش آمدید!")
+        await query.edit_message_text("✅ عضویت شما تأیید شد!\n🌐 به ربات OnePercentVPN12 خوش آمدید!")
         
         if is_admin(user.id):
             await query.message.reply_text("🌐 منوی اصلی:", reply_markup=get_admin_main_keyboard())
@@ -2244,19 +2327,41 @@ async def handle_balance_amount(update, context, user_id, text):
     except ValueError:
         await update.message.reply_text("⚠️ لطفاً یک عدد معتبر وارد کنید.", reply_markup=get_back_keyboard())
 
-async def handle_subscription_plan(update, context, user_id, text):
-    selected_volume = extract_volume_from_display_text(text)
+async def handle_subscription_type(update, context, user_id, text):
+    if text == "⭐️ اشتراک اکونومی ⭐️":
+        is_agent = await is_user_agent(user_id)
+        await update.message.reply_text("💳 پلن اکونومی مورد نظر را انتخاب کنید:", reply_markup=get_subscription_keyboard(is_agent, "economy"))
+        user_states[user_id] = "awaiting_subscription_type_economy"
+    elif text == "💎 اشتراک سوپر فست 💎":
+        is_agent = await is_user_agent(user_id)
+        await update.message.reply_text("💳 پلن سوپر فست مورد نظر را انتخاب کنید:", reply_markup=get_subscription_keyboard(is_agent, "superfast"))
+        user_states[user_id] = "awaiting_subscription_type_superfast"
+    elif text == "↩️ بازگشت به منو":
+        is_agent = await is_user_agent(user_id)
+        await update.message.reply_text("🌐 منوی اصلی:", reply_markup=get_main_keyboard(is_agent))
+        user_states.pop(user_id, None)
+    else:
+        is_agent = await is_user_agent(user_id)
+        await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_main_keyboard(is_agent))
+
+async def handle_subscription_plan(update, context, user_id, text, subscription_type):
+    selected_volume, selected_type = extract_volume_from_display_text(text)
     
-    if selected_volume:
+    if selected_volume and selected_type == subscription_type:
         volume = selected_volume
         is_agent = await is_user_agent(user_id)
-        price = get_price_for_volume(volume, 1, is_agent)
+        price = get_price_for_volume(volume, 1, is_agent, subscription_type)
+        
+        type_name = "اکونومی ⭐️" if subscription_type == "economy" else "سوپر فست 💎"
         
         if volume == 10:
-            original_price = 10 * (AGENT_PRICE_PER_GB if is_agent else PRICE_PER_GB)
+            if subscription_type == "economy":
+                original_price = 10 * (AGENT_PRICE_PER_GB_ECONOMY if is_agent else PRICE_PER_GB_ECONOMY)
+            else:
+                original_price = 10 * (AGENT_PRICE_PER_GB_SUPERFAST if is_agent else PRICE_PER_GB_SUPERFAST)
             await update.message.reply_text(
-                f"🎉 تخفیف ویژه {persian_number(volume)} گیگ!\n\n"
-                f"✅ {persian_number(volume)} گیگ {CONFIG_NAME}\n"
+                f"🎉 تخفیف ویژه {persian_number(volume)} گیگ {type_name}!\n\n"
+                f"✅ {persian_number(volume)} گیگ {CONFIG_NAME} {type_name}\n"
                 f"💰 قیمت اصلی: {format_price(original_price)}\n"
                 f"💰 قیمت با تخفیف: {format_price(price)}\n"
                 f"💸 شما {format_price(original_price - price)} تخفیف دریافت می‌کنید!\n\n"
@@ -2265,32 +2370,35 @@ async def handle_subscription_plan(update, context, user_id, text):
             )
         else:
             await update.message.reply_text(
-                f"✅ {persian_number(volume)} گیگ {CONFIG_NAME}\n"
+                f"✅ {persian_number(volume)} گیگ {CONFIG_NAME} {type_name}\n"
                 f"💰 قیمت هر عدد: {format_price(price)}\n\n"
                 f"🔢 تعداد مورد نیاز خود را به عدد وارد کنید:",
                 reply_markup=get_back_keyboard()
             )
         
-        user_states[user_id] = f"awaiting_quantity_{volume}"
+        user_states[user_id] = f"awaiting_quantity_{volume}_{subscription_type}"
     else:
         is_agent = await is_user_agent(user_id)
-        await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_subscription_keyboard(is_agent))
+        await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_subscription_keyboard(is_agent, subscription_type))
 
 async def handle_quantity_input(update, context, user_id, state, text):
     try:
-        volume = int(state.split("_")[2])
+        parts = state.split("_")
+        volume = int(parts[2])
+        subscription_type = parts[3]
         quantity = int(english_number(text.strip()))
         
         if quantity <= 0:
             await update.message.reply_text("⚠️ لطفاً یک عدد مثبت وارد کنید.", reply_markup=get_back_keyboard())
             return
         
-        available_count = await get_available_configs_count(volume)
+        available_count = await get_available_configs_count(volume, subscription_type)
         
         if available_count < quantity:
+            type_name = "اکونومی" if subscription_type == "economy" else "سوپر فست"
             await update.message.reply_text(
                 f"⚠️ موجودی کافی نیست!\n\n"
-                f"📦 تعداد موجود {persian_number(volume)} گیگ: {persian_number(available_count)} عدد\n"
+                f"📦 تعداد موجود {persian_number(volume)} گیگ {type_name}: {persian_number(available_count)} عدد\n"
                 f"📊 تعداد درخواستی شما: {persian_number(quantity)} عدد\n\n"
                 f"لطفاً تعداد کمتر یا مساوی موجودی وارد کنید:",
                 reply_markup=get_back_keyboard()
@@ -2298,14 +2406,18 @@ async def handle_quantity_input(update, context, user_id, state, text):
             return
         
         is_agent = await is_user_agent(user_id)
-        total_amount = get_price_for_volume(volume, quantity, is_agent)
-        plan_name = f"{CONFIG_NAME} | {volume} گیگ | {persian_number(quantity)} عدد"
+        total_amount = get_price_for_volume(volume, quantity, is_agent, subscription_type)
+        type_name = "اکونومی ⭐️" if subscription_type == "economy" else "سوپر فست 💎"
+        plan_name = f"{CONFIG_NAME} {type_name} | {volume} گیگ | {persian_number(quantity)} عدد"
         
         if volume == 10:
-            original_total = 10 * (AGENT_PRICE_PER_GB if is_agent else PRICE_PER_GB) * quantity
+            if subscription_type == "economy":
+                original_total = 10 * (AGENT_PRICE_PER_GB_ECONOMY if is_agent else PRICE_PER_GB_ECONOMY) * quantity
+            else:
+                original_total = 10 * (AGENT_PRICE_PER_GB_SUPERFAST if is_agent else PRICE_PER_GB_SUPERFAST) * quantity
             await update.message.reply_text(
                 f"🎉 تخفیف ویژه اعمال شد!\n\n"
-                f"✅ {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگی\n"
+                f"✅ {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگی {type_name}\n"
                 f"💰 مبلغ اصلی: {format_price(original_total)}\n"
                 f"💰 مبلغ با تخفیف: {format_price(total_amount)}\n"
                 f"💸 مجموع تخفیف: {format_price(original_total - total_amount)}\n\n"
@@ -2314,33 +2426,34 @@ async def handle_quantity_input(update, context, user_id, state, text):
             )
         else:
             await update.message.reply_text(
-                f"✅ {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگی\n"
+                f"✅ {persian_number(quantity)} عدد کانفیگ {persian_number(volume)} گیگی {type_name}\n"
                 f"💰 مبلغ کل: {format_price(total_amount)}\n\n"
                 f"در صورت داشتن کد تخفیف، آن را وارد کنید، در غیر اینصورت روی 'ادامه' کلیک کنید:",
                 reply_markup=ReplyKeyboardMarkup([[KeyboardButton("ادامه")], [KeyboardButton("↩️ بازگشت به منو")]], resize_keyboard=True)
             )
         
-        user_states[user_id] = f"awaiting_coupon_code_{total_amount}_{plan_name}_{volume}_{quantity}"
+        user_states[user_id] = f"awaiting_coupon_code_{total_amount}_{plan_name}_{volume}_{quantity}_{subscription_type}"
     except ValueError:
         await update.message.reply_text("⚠️ لطفاً یک عدد معتبر وارد کنید.", reply_markup=get_back_keyboard())
 
 async def handle_coupon_code(update, context, user_id, state, text):
     parts = state.split("_")
-    if len(parts) < 6:
+    if len(parts) < 7:
         await update.message.reply_text("⚠️ خطا در پردازش درخواست.", reply_markup=get_main_keyboard(await is_user_agent(user_id)))
         user_states.pop(user_id, None)
         return
     
     amount = int(parts[3])
-    volume = int(parts[-2])
-    quantity = int(parts[-1])
-    plan_parts = parts[4:-2]
+    volume = int(parts[-3])
+    quantity = int(parts[-2])
+    subscription_type = parts[-1]
+    plan_parts = parts[4:-3]
     plan = "_".join(plan_parts)
     
     if text == "ادامه":
         balance = await get_user_balance(user_id)
         has_balance = balance >= amount
-        user_states[user_id] = f"awaiting_payment_method_{amount}_{plan}_{volume}_{quantity}"
+        user_states[user_id] = f"awaiting_payment_method_{amount}_{plan}_{volume}_{quantity}_{subscription_type}"
         await update.message.reply_text("💳 روش پرداخت را انتخاب کنید:", reply_markup=get_payment_method_keyboard(has_balance))
         return
     
@@ -2352,7 +2465,7 @@ async def handle_coupon_code(update, context, user_id, state, text):
     discounted_amount = int(amount * (1 - discount_percent / 100))
     balance = await get_user_balance(user_id)
     has_balance = balance >= discounted_amount
-    user_states[user_id] = f"awaiting_payment_method_{discounted_amount}_{plan}_{volume}_{quantity}_{text.strip()}"
+    user_states[user_id] = f"awaiting_payment_method_{discounted_amount}_{plan}_{volume}_{quantity}_{subscription_type}_{text.strip()}"
     await update.message.reply_text(f"✅ کد تخفیف اعمال شد! مبلغ با {persian_number(discount_percent)}% تخفیف: {format_price(discounted_amount)}\nروش پرداخت را انتخاب کنید:", reply_markup=get_payment_method_keyboard(has_balance))
 
 async def handle_payment_method(update, context, user_id, text):
@@ -2363,30 +2476,32 @@ async def handle_payment_method(update, context, user_id, text):
     try:
         parts = state.split("_")
         
-        if len(parts) < 7:
+        if len(parts) < 8:
             await update.message.reply_text("⚠️ خطا در پردازش درخواست.", reply_markup=get_main_keyboard(await is_user_agent(user_id)))
             user_states.pop(user_id, None)
             return
         
         amount = int(parts[3])
         
-        if len(parts) >= 8 and parts[-1] and parts[-1] not in ["card_to_card"] and not parts[-1].isdigit():
+        if len(parts) >= 9 and parts[-1] and parts[-1] not in ["card_to_card"] and not parts[-1].isdigit():
             coupon_code = parts[-1]
             volume = int(parts[-3])
             quantity = int(parts[-2])
-            plan_parts = parts[4:-3]
+            subscription_type = parts[-4]
+            plan_parts = parts[4:-4]
             plan = "_".join(plan_parts)
         else:
             coupon_code = None
-            volume = int(parts[-2])
-            quantity = int(parts[-1])
-            plan_parts = parts[4:-2]
+            volume = int(parts[-3])
+            quantity = int(parts[-2])
+            subscription_type = parts[-1]
+            plan_parts = parts[4:-3]
             plan = "_".join(plan_parts)
         
         if text == "🏧 انتقال کارت به کارت":
             payment_id = await add_payment(user_id, amount, "buy_subscription", "card_to_card", description=plan, coupon_code=coupon_code)
             if payment_id:
-                await add_subscription(user_id, payment_id, plan, volume, quantity)
+                await add_subscription(user_id, payment_id, plan, volume, quantity, subscription_type)
                 await update.message.reply_text(
                     f"💳 لطفاً مبلغ {format_price(amount)} را به کارت زیر واریز کنید:\n\n"
                     f"🏦 شماره کارت: {BANK_CARD}\n"
@@ -2407,12 +2522,12 @@ async def handle_payment_method(update, context, user_id, text):
                     payment_id = await add_payment(user_id, amount, "buy_subscription", "balance", description=plan, coupon_code=coupon_code)
                     if payment_id:
                         await update_payment_status(payment_id, "approved")
-                        await add_subscription(user_id, payment_id, plan, volume, quantity)
+                        await add_subscription(user_id, payment_id, plan, volume, quantity, subscription_type)
                         await update.message.reply_text(f"✅ پرداخت با موفقیت از موجودی شما انجام شد.\n💰 مبلغ {format_price(amount)} از موجودی شما کسر گردید.\n🆔 کد پیگیری: {payment_id}\n\nدر حال ارسال کانفیگ‌ها...")
                         
                         sub = await db_execute("SELECT id FROM subscriptions WHERE payment_id = %s", (payment_id,), fetchone=True)
                         if sub:
-                            await send_multiple_configs_to_user(sub[0], user_id, volume, quantity, plan, context.bot)
+                            await send_multiple_configs_to_user(sub[0], user_id, volume, quantity, plan, context.bot, subscription_type)
                     else:
                         await add_balance(user_id, amount)
                         await update.message.reply_text("⚠️ خطا در ثبت پرداخت. مبلغ به موجودی شما بازگردانده شد.", reply_markup=get_main_keyboard(await is_user_agent(user_id)))
@@ -2482,10 +2597,14 @@ async def handle_agent_registration(update, context, user_id):
         await update.message.reply_text(
             "👑 شما در حال حاضر نماینده هستید!\n\n"
             f"💰 قیمت‌های ویژه نمایندگان:\n"
-            f"⭐️ ۱ گیگ — {format_price(AGENT_PRICE_PER_GB)}\n"
-            f"⭐️ ۲ گیگ — {format_price(AGENT_PRICE_PER_GB * 2)}\n"
-            f"⭐️ ۵ گیگ — {format_price(AGENT_PRICE_PER_GB * 5)}\n"
-            f"💎 ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB)}",
+            f"⭐️ اکونومی ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY)}\n"
+            f"⭐️ اکونومی ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 2)}\n"
+            f"⭐️ اکونومی ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 5)}\n"
+            f"💎 اکونومی ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_ECONOMY)}\n"
+            f"⭐️ سوپر فست ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST)}\n"
+            f"⭐️ سوپر فست ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 2)}\n"
+            f"⭐️ سوپر فست ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 5)}\n"
+            f"💎 سوپر فست ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_SUPERFAST)}",
             reply_markup=get_main_keyboard(True)
         )
         return
@@ -2497,10 +2616,14 @@ async def handle_agent_registration(update, context, user_id):
         "❌ توجه: این مبلغ صرفاً جهت احراز شرایط نمایندگی است و به‌طور کامل در حساب شما باقی می‌ماند. هیچ هزینه‌ای بابت تبدیل حساب به نمایندگی کسر نخواهد شد و کل موجودی قابل استفاده است.\n\n"
         "💰 قیمت‌ها پس از دریافت نمایندگی:\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        f"⭐️ ۱ گیگ — {format_price(AGENT_PRICE_PER_GB)}\n"
-        f"⭐️ ۲ گیگ — {format_price(AGENT_PRICE_PER_GB * 2)}\n"
-        f"⭐️ ۵ گیگ — {format_price(AGENT_PRICE_PER_GB * 5)}\n"
-        f"💎 ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB)}\n"
+        f"⭐️ اکونومی ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY)}\n"
+        f"⭐️ اکونومی ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 2)}\n"
+        f"⭐️ اکونومی ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 5)}\n"
+        f"💎 اکونومی ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_ECONOMY)}\n"
+        f"⭐️ سوپر فست ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST)}\n"
+        f"⭐️ سوپر فست ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 2)}\n"
+        f"⭐️ سوپر فست ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 5)}\n"
+        f"💎 سوپر فست ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_SUPERFAST)}\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
     
@@ -2626,13 +2749,13 @@ async def admin_callback_handler(update, context):
             
             if ptype == "buy_subscription":
                 await context.bot.send_message(uid, f"✅ پرداخت شما تایید شد. کد پیگیری: {payment_id}")
-                sub = await db_execute("SELECT id, volume, plan, quantity, config FROM subscriptions WHERE payment_id = %s", (payment_id,), fetchone=True)
+                sub = await db_execute("SELECT id, volume, plan, quantity, subscription_type, config FROM subscriptions WHERE payment_id = %s", (payment_id,), fetchone=True)
                 if sub:
-                    subscription_id, volume, plan, quantity, existing_config = sub
+                    subscription_id, volume, plan, quantity, subscription_type, existing_config = sub
                     if existing_config:
                         await query.message.reply_text(f"⚠️ این اشتراک قبلاً کانفیگ خود را دریافت کرده است.")
                     else:
-                        await send_multiple_configs_to_user(subscription_id, uid, volume, quantity, plan, context.bot)
+                        await send_multiple_configs_to_user(subscription_id, uid, volume, quantity, plan, context.bot, subscription_type)
             elif ptype == "add_balance":
                 await add_balance(uid, amt)
                 await context.bot.send_message(uid, f"✅ درخواست افزایش موجودی شما تایید شد!\n💰 مبلغ {format_price(amt)} به حساب شما اضافه شد.\n🆔 کد پیگیری: {payment_id}")
@@ -2646,10 +2769,14 @@ async def admin_callback_handler(update, context):
                     f"💰 مبلغ {format_price(amt)} به موجودی شما اضافه شد و قابل استفاده است.\n"
                     f"💎 از این پس می‌توانید از قیمت‌های ویژه نمایندگان استفاده کنید.\n\n"
                     f"⭐️ قیمت‌های ویژه شما:\n"
-                    f"۱ گیگ — {format_price(AGENT_PRICE_PER_GB)}\n"
-                    f"۲ گیگ — {format_price(AGENT_PRICE_PER_GB * 2)}\n"
-                    f"۵ گیگ — {format_price(AGENT_PRICE_PER_GB * 5)}\n"
-                    f"۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB)}"
+                    f"اکونومی ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY)}\n"
+                    f"اکونومی ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 2)}\n"
+                    f"اکونومی ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_ECONOMY * 5)}\n"
+                    f"اکونومی ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_ECONOMY)}\n"
+                    f"سوپر فست ۱ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST)}\n"
+                    f"سوپر فست ۲ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 2)}\n"
+                    f"سوپر فست ۵ گیگ — {format_price(AGENT_PRICE_PER_GB_SUPERFAST * 5)}\n"
+                    f"سوپر فست ۱۰ گیگ — {format_price(AGENT_DISCOUNTED_PRICE_10GB_SUPERFAST)}"
                 )
                 await query.message.reply_text(f"✅ کاربر {uid} به نمایندگی ارتقا یافت و مبلغ {format_price(amt)} به موجودی او اضافه شد.")
                     
@@ -2695,9 +2822,12 @@ async def handle_normal_commands(update, context, user_id, text):
     is_agent = await is_user_agent(user_id)
     
     if text == "🛍️ خرید اشتراک":
-        await update.message.reply_text("💳 پلن مورد نظر را انتخاب کنید:", reply_markup=get_subscription_keyboard(is_agent))
-    elif any(text.startswith(f"{persian_number(v)} گیگ") for v in AVAILABLE_VOLUMES):
-        await handle_subscription_plan(update, context, user_id, text)
+        await update.message.reply_text("💳 نوع اشتراک خود را انتخاب کنید:", reply_markup=get_subscription_type_keyboard())
+    elif text in ["⭐️ اشتراک اکونومی ⭐️", "💎 اشتراک سوپر فست 💎"]:
+        await handle_subscription_type(update, context, user_id, text)
+    elif any(text.startswith(f"{persian_number(v)} گیگ اکونومی") for v in AVAILABLE_VOLUMES) or any(text.startswith(f"{persian_number(v)} گیگ سوپر فست") for v in AVAILABLE_VOLUMES):
+        # اینجا توسط state هندل می‌شود
+        pass
     elif text == "💰 موجودی":
         await show_balance(update, context, user_id)
     elif text == "🆘 پشتیبانی":
@@ -2709,7 +2839,8 @@ async def handle_normal_commands(update, context, user_id, text):
             return
         response = "🗂️ اشتراک‌های شما:\n\n"
         for s in subs:
-            response += f"🔹 {s['plan']} ({persian_number(s['volume'])} گیگ - تعداد: {persian_number(s['quantity'])} عدد)\n📊 وضعیت: {'✅ فعال' if s['status'] == 'active' else '⏳ در انتظار تایید'}\n"
+            type_name = "اکونومی ⭐️" if s['subscription_type'] == "economy" else "سوپر فست 💎"
+            response += f"🔹 {type_name} {s['plan']} ({persian_number(s['volume'])} گیگ - تعداد: {persian_number(s['quantity'])} عدد)\n📊 وضعیت: {'✅ فعال' if s['status'] == 'active' else '⏳ در انتظار تایید'}\n"
             if s['status'] == 'active' and s['config']:
                 response += f"🔐 کانفیگ:\n```\n{s['config']}\n```\n"
             response += "--------------------\n"
@@ -2774,12 +2905,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_unban_user(update, context, user_id, text)
             return
         
-        # سایر هندلرهای ادمین...
+        # مدیریت کانفیگ
         if state == "awaiting_admin_config_action":
             await handle_admin_config_action(update, context, user_id, text)
             return
-        if state == "awaiting_config_volume_selection":
-            await handle_config_volume_selection(update, context, user_id, text)
+        if state == "awaiting_config_volume_selection_economy" or state == "awaiting_config_volume_selection_superfast":
+            await handle_config_volume_selection(update, context, user_id, state, text)
             return
         if state and state.startswith("awaiting_config_text_"):
             await handle_config_text(update, context, user_id, state, text)
@@ -2846,6 +2977,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if text == "💳 مدیریت کارت":
             await bank_management_command(update, context)
             return
+        if text == "⚙️ مدیریت کانفیگ":
+            await add_config_command(update, context)
+            return
+        if text == "👥 مدیریت کاربران":
+            await user_info_command(update, context)
+            return
     
     # هندلرهای عادی کاربران
     if not await is_bot_available_for_user(user_id):
@@ -2894,6 +3031,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if state and state.startswith("awaiting_payment_method_"):
         await handle_payment_method(update, context, user_id, text)
+        return
+    
+    if state and state.startswith("awaiting_subscription_type_"):
+        subscription_type = state.split("_")[2]
+        await handle_subscription_plan(update, context, user_id, text, subscription_type)
         return
     
     if state and state.startswith("awaiting_quantity_"):
@@ -2953,9 +3095,10 @@ async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE
         success_count = 0
         for cfg in configs_list:
             try:
+                sub_type = cfg.get('subscription_type', 'economy')
                 await db_execute(
-                    "INSERT INTO config_pool (id, volume, config_text, is_sold, created_by, created_at) VALUES (%s, %s, %s, FALSE, %s, %s) ON CONFLICT (id) DO NOTHING",
-                    (cfg['id'], cfg['volume'], cfg['config_text'], cfg.get('created_by', 1), cfg['created_at'])
+                    "INSERT INTO config_pool (id, volume, config_text, is_sold, created_by, created_at, subscription_type) VALUES (%s, %s, %s, FALSE, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
+                    (cfg['id'], cfg['volume'], cfg['config_text'], cfg.get('created_by', 1), cfg['created_at'], sub_type)
                 )
                 success_count += 1
             except:
@@ -3035,7 +3178,7 @@ async def on_startup():
             try:
                 await application.bot.send_message(
                     chat_id=admin_id, 
-                    text=f"🤖 ربات کاوه وی‌پی‌ان با موفقیت راه‌اندازی شد!\n✅ عضویت اجباری در کانال {CHANNEL_USERNAME} فعال است.\n✅ وضعیت ربات: {status_text}\n🎉 قیمت 10 گیگ با تخفیف ویژه: {format_price(DISCOUNTED_PRICE_10GB)}\n💳 شماره کارت فعال: {BANK_CARD}\n👤 نام دارنده: {BANK_OWNER}\n━━━━━━━━━━━━━━━━━━━━\n📦 بکاپ خودکار استخر کانفیگ‌ها هر شب ساعت ۲۳:۵۹ ارسال می‌شود."
+                    text=f"🤖 ربات OnePercentVPN12 با موفقیت راه‌اندازی شد!\n✅ عضویت اجباری در کانال {CHANNEL_USERNAME} فعال است.\n✅ وضعیت ربات: {status_text}\n🎉 قیمت‌ها:\n⭐️ اکونومی هر گیگ: {format_price(PRICE_PER_GB_ECONOMY)}\n💎 سوپر فست هر گیگ: {format_price(PRICE_PER_GB_SUPERFAST)}\n💳 شماره کارت فعال: {BANK_CARD}\n👤 نام دارنده: {BANK_OWNER}\n━━━━━━━━━━━━━━━━━━━━\n📦 بکاپ خودکار استخر کانفیگ‌ها هر شب ساعت ۲۳:۵۹ ارسال می‌شود."
                 )
             except:
                 pass
