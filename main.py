@@ -202,10 +202,10 @@ def get_coupon_recipient_keyboard():
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
-# ==================== توابع تشخیص (اصلاح شده) ====================
+# ==================== توابع تشخیص (اصلاح شده نهایی) ====================
 def extract_volume_and_type(text: str) -> Tuple[Optional[int], Optional[str]]:
     """استخراج حجم و نوع اشتراک از متن دکمه"""
-    # استخراج عدد حجم
+    # پیدا کردن عدد حجم در متن
     volume = None
     for v in range(1, 11):
         if f"{persian_number(v)} گیگ" in text:
@@ -215,7 +215,7 @@ def extract_volume_and_type(text: str) -> Tuple[Optional[int], Optional[str]]:
     if volume is None:
         return None, None
     
-    # تشخیص نوع اشتراک
+    # تشخیص نوع اشتراک (اکونومی یا سوپر فست)
     if "اکونومی" in text or "⭐️" in text:
         return volume, "economy"
     elif "سوپر فست" in text or "💎" in text:
@@ -791,44 +791,46 @@ async def handle_buy_subscription(update, context, user_id, text):
         user_states.pop(user_id, None)
         return
     
-    # تشخیص حجم و نوع از دکمه‌های حجم
+    # پردازش دکمه‌های حجم
     current_state = user_states.get(user_id)
     
-    # فقط اگر کاربر در حالت انتخاب حجم باشد، دکمه‌های حجم را پردازش کن
+    # فقط اگر کاربر در حالت انتخاب حجم باشد
     if current_state in ["awaiting_economy_volume", "awaiting_superfast_volume"]:
-        volume, sub_type = extract_volume_and_type(text)
+        # استخراج حجم و نوع از متن دکمه
+        volume = None
+        for v in range(1, 11):
+            if f"{persian_number(v)} گیگ" in text:
+                volume = v
+                break
         
-        if volume and sub_type:
-            expected_type = "economy" if current_state == "awaiting_economy_volume" else "superfast"
-            
-            if expected_type == sub_type:
-                user_states[user_id] = f"awaiting_quantity_{volume}_{sub_type}"
-                await update.message.reply_text(
-                    f"✅ {persian_number(volume)} گیگ {CONFIG_NAME}\n💰 قیمت هر عدد: {format_price(get_price_for_volume(volume, 1, is_agent_user, sub_type))}\n\n🔢 تعداد مورد نیاز را وارد کنید:",
-                    reply_markup=get_back_keyboard()
-                )
-                return
-            else:
-                # نوع اشتباه انتخاب شده
-                await update.message.reply_text(
-                    f"⚠️ لطفاً از دکمه‌های { 'اکونومی' if current_state == 'awaiting_economy_volume' else 'سوپر فست' } استفاده کنید.", 
-                    reply_markup=get_subscription_keyboard(is_agent_user, expected_type)
-                )
-                return
-        else:
-            # متن ارسال شده مربوط به دکمه حجم نیست
-            await update.message.reply_text(
-                "⚠️ لطفاً از دکمه‌های حجم استفاده کنید.", 
-                reply_markup=get_subscription_keyboard(is_agent_user, "economy" if current_state == "awaiting_economy_volume" else "superfast")
-            )
+        if volume is None:
+            await update.message.reply_text("⚠️ لطفاً از دکمه‌های حجم استفاده کنید.", reply_markup=get_subscription_keyboard(is_agent_user, "economy" if current_state == "awaiting_economy_volume" else "superfast"))
             return
+        
+        # تعیین نوع مورد انتظار
+        expected_type = "economy" if current_state == "awaiting_economy_volume" else "superfast"
+        
+        # بررسی اینکه متن شامل ایموجی یا متن درست هست
+        if (expected_type == "economy" and ("اکونومی" in text or "⭐️" in text)) or \
+           (expected_type == "superfast" and ("سوپر فست" in text or "💎" in text)):
+            
+            # ذخیره اطلاعات و رفتن به مرحله تعداد
+            user_states[user_id] = f"awaiting_quantity_{volume}_{expected_type}"
+            await update.message.reply_text(
+                f"✅ {persian_number(volume)} گیگ {CONFIG_NAME}\n💰 قیمت هر عدد: {format_price(get_price_for_volume(volume, 1, is_agent_user, expected_type))}\n\n🔢 تعداد مورد نیاز را وارد کنید:",
+                reply_markup=get_back_keyboard()
+            )
+        else:
+            await update.message.reply_text(
+                f"⚠️ لطفاً از دکمه‌های { 'اکونومی' if current_state == 'awaiting_economy_volume' else 'سوپر فست' } استفاده کنید.", 
+                reply_markup=get_subscription_keyboard(is_agent_user, expected_type)
+            )
     else:
-        # کاربر در حالت انتخاب حجم نیست، به منوی اصلی برگرد
+        # کاربر در حالت انتخاب حجم نیست
         await update.message.reply_text(
             "⚠️ لطفاً ابتدا از منوی 'خرید اشتراک' نوع اشتراک را انتخاب کنید.", 
             reply_markup=get_main_keyboard(is_agent_user)
         )
-        return
 
 async def handle_quantity(update, context, user_id, state, text):
     try:
