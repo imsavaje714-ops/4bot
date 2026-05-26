@@ -675,6 +675,28 @@ async def toggle_status_command(update, context):
     status_text = "روشن" if new_status else "خاموش"
     await update.message.reply_text(f"🟢 وضعیت ربات: {status_text}", reply_markup=get_admin_main_keyboard())
 
+# ==================== دستور تعمیر دیتابیس ====================
+async def fix_database_command(update, context):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ فقط ادمین")
+        return
+    
+    try:
+        # اضافه کردن ستون coupon_code
+        await db_execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS coupon_code TEXT")
+        await update.message.reply_text("✅ ستون coupon_code با موفقیت به جدول payments اضافه شد")
+        
+        # همچنین بررسی سایر ستون‌های احتمالی
+        try:
+            await db_execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS description TEXT")
+        except:
+            pass
+            
+        await update.message.reply_text("✅ دیتابیس با موفقیت تعمیر شد!", reply_markup=get_admin_main_keyboard())
+            
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطا: {str(e)}", reply_markup=get_admin_main_keyboard())
+
 # ==================== هندلرها ====================
 application = Application.builder().token(TOKEN).build()
 
@@ -1718,6 +1740,7 @@ application.add_handler(CommandHandler("shutdown", shutdown_command))
 application.add_handler(CommandHandler("startup", startup_command))
 application.add_handler(CommandHandler("debug", debug_subscriptions_command))
 application.add_handler(CommandHandler("toggle", toggle_status_command))
+application.add_handler(CommandHandler("fixdb", fix_database_command))  # دستور تعمیر دیتابیس
 application.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), message_handler))
 application.add_handler(CallbackQueryHandler(admin_callback))
 
