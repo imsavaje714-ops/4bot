@@ -1062,9 +1062,18 @@ async def admin_callback(update, context):
                 await send_multiple_configs_to_user(sub[0], uid, sub[1], sub[2], desc, context.bot, sub[3])
         
         elif ptype == "add_balance":
+            # بررسی می‌کنیم که کاربر وجود دارد
+            user_exists = await db_execute("SELECT user_id FROM users WHERE user_id = %s", (uid,), fetchone=True)
+            if not user_exists:
+                await db_execute("INSERT INTO users (user_id, username, balance) VALUES (%s, %s, %s)", (uid, "unknown", 0))
+            
+            # اضافه کردن موجودی
             await add_balance(uid, amt)
-            await context.bot.send_message(uid, f"✅ موجودی شما {format_price(amt)} افزایش یافت")
+            
+            # ارسال پیام تایید به کاربر و ادمین
+            await context.bot.send_message(uid, f"✅ موجودی شما {format_price(amt)} افزایش یافت (کد: {payment_id})")
             await context.bot.send_message(update.effective_user.id, f"✅ موجودی کاربر {uid} به میزان {format_price(amt)} افزایش یافت")
+            logging.info(f"Balance added: {amt} to user {uid} by admin {update.effective_user.id}")
         
         elif ptype == "agent_registration":
             await set_user_agent(uid)
