@@ -962,14 +962,17 @@ async def handle_agent_method(update, context, user_id, text):
     else:
         await update.message.reply_text("⚠️ از دکمه‌ها استفاده کنید", reply_markup=get_payment_method_keyboard(False))
 
-# ---------- هندلرهای ادمین ----------
+# ---------- هندلرهای ادمین (اصلاح شده) ----------
 async def admin_callback(update, context):
     query = update.callback_query
     await query.answer()
     data = query.data
     
     if not is_admin(update.effective_user.id):
-        await query.edit_message_text("⛔ دسترسی غیرمجاز")
+        try:
+            await query.edit_message_text("⛔ دسترسی غیرمجاز")
+        except:
+            await query.message.reply_text("⛔ دسترسی غیرمجاز")
         return
     
     if data == "check_membership":
@@ -980,31 +983,38 @@ async def admin_callback(update, context):
         payment_id = int(data.split("_")[1])
         payment = await db_execute("SELECT user_id, amount, type, description FROM payments WHERE id = %s", (payment_id,), fetchone=True)
         if not payment:
-            await query.edit_message_text("⚠️ پرداخت یافت نشد")
+            try:
+                await query.edit_message_text("⚠️ پرداخت یافت نشد")
+            except:
+                await query.message.reply_text("⚠️ پرداخت یافت نشد")
             return
         
         # تایید پرداخت
         await update_payment_status(payment_id, "approved")
-        await query.edit_message_text("✅ تایید شد")
         
         uid, amt, ptype, desc = payment
         logging.info(f"✅ ادمین پرداخت {payment_id} را تایید کرد: کاربر {uid} - نوع {ptype} - مبلغ {amt}")
         
+        # ارسال پیام تایید به کاربر
+        try:
+            await context.bot.send_message(uid, f"✅ پرداخت شما با کد {payment_id} تایید شد!")
+        except:
+            pass
+        
         if ptype == "buy_subscription":
             # خرید اشتراک
-            await context.bot.send_message(uid, f"✅ پرداخت شما تایید شد! کد: {payment_id}")
             sub = await db_execute("SELECT id, volume, quantity, subscription_type FROM subscriptions WHERE payment_id = %s", (payment_id,), fetchone=True)
             if sub:
                 await send_multiple_configs_to_user(sub[0], uid, sub[1], sub[2], desc, context.bot, sub[3])
         
         elif ptype == "add_balance":
-            # افزایش موجودی - این بخش اصلاح شده است
+            # افزایش موجودی
             try:
                 await add_balance(uid, amt)
                 new_balance = await get_user_balance(uid)
                 await context.bot.send_message(
                     uid, 
-                    f"✅ پرداخت شما تایید شد!\n💰 مبلغ {format_price(amt)} به موجودی شما اضافه شد.\n💰 موجودی جدید: {format_price(new_balance)}"
+                    f"✅ مبلغ {format_price(amt)} به موجودی شما اضافه شد.\n💰 موجودی جدید: {format_price(new_balance)}"
                 )
                 logging.info(f"✅ موجودی کاربر {uid} به مقدار {amt} تومان افزایش یافت. موجودی جدید: {new_balance}")
             except Exception as e:
@@ -1013,23 +1023,46 @@ async def admin_callback(update, context):
         
         elif ptype == "agent_registration":
             # ثبت‌نام نمایندگی
-            await set_user_agent(uid)
-            await add_balance(uid, amt)
-            new_balance = await get_user_balance(uid)
-            await context.bot.send_message(
-                uid, 
-                f"🎉 شما به نمایندگی ارتقا یافتید!\n💰 مبلغ {format_price(amt)} به موجودی شما اضافه شد.\n💰 موجودی جدید: {format_price(new_balance)}"
-            )
-            logging.info(f"✅ کاربر {uid} به نمایندگی ارتقا یافت و {amt} تومان به موجودی اضافه شد")
+            try:
+                await set_user_agent(uid)
+                await add_balance(uid, amt)
+                new_balance = await get_user_balance(uid)
+                await context.bot.send_message(
+                    uid, 
+                    f"🎉 شما به نمایندگی ارتقا یافتید!\n💰 مبلغ {format_price(amt)} به موجودی شما اضافه شد.\n💰 موجودی جدید: {format_price(new_balance)}"
+                )
+                logging.info(f"✅ کاربر {uid} به نمایندگی ارتقا یافت و {amt} تومان به موجودی اضافه شد")
+            except Exception as e:
+                logging.error(f"❌ خطا در ارتقای نمایندگی کاربر {uid}: {e}")
+                await context.bot.send_message(uid, f"⚠️ خطا در ثبت نمایندگی! لطفاً با پشتیبانی تماس بگیرید.")
+        
+        # ویرایش پیام دکمه (با try/except برای جلوگیری از خطا)
+        try:
+            await query.edit_message_text(f"✅ پرداخت {payment_id} تایید شد")
+        except:
+            try:
+                await query.message.reply_text(f"✅ پرداخت {payment_id} تایید شد")
+            except:
+                pass
     
     elif data.startswith("reject_"):
         payment_id = int(data.split("_")[1])
         payment = await db_execute("SELECT user_id FROM payments WHERE id = %s", (payment_id,), fetchone=True)
         if payment:
             await update_payment_status(payment_id, "rejected")
-            await context.bot.send_message(payment[0], f"❌ پرداخت شما با کد {payment_id} رد شد")
+            try:
+                await context.bot.send_message(payment[0], f"❌ پرداخت شما با کد {payment_id} رد شد")
+            except:
+                pass
             logging.info(f"❌ ادمین پرداخت {payment_id} را رد کرد")
-        await query.edit_message_text("❌ رد شد")
+        
+        try:
+            await query.edit_message_text(f"❌ پرداخت {payment_id} رد شد")
+        except:
+            try:
+                await query.message.reply_text(f"❌ پرداخت {payment_id} رد شد")
+            except:
+                pass
 
 async def stats_command(update, context):
     if not is_admin(update.effective_user.id):
