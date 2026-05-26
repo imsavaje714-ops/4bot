@@ -156,6 +156,7 @@ def get_admin_config_keyboard():
         [KeyboardButton("➕ اضافه کردن کانفیگ سوپر فست")],
         [KeyboardButton("📊 مشاهده موجودی کانفیگ‌ها")],
         [KeyboardButton("📋 لیست تمام کانفیگ‌ها")],
+        [KeyboardButton("🗑️ پاک کردن استخر کانفیگ")],
         [KeyboardButton("↩️ بازگشت به منو")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -451,7 +452,8 @@ async def send_multiple_configs_to_user(subscription_id: int, user_id: int, volu
         await update_subscription_config(subscription_id, configs_text)
         await mark_configs_as_sold([c['id'] for c in configs], user_id)
         type_name = "اکونومی ⭐️" if subscription_type == "economy" else "سوپر فست 💎"
-        await bot.send_message(user_id, f"✅ اشتراک {type_name} {plan} شما فعال شد!\n\n🔐 کانفیگ:\n```\n{configs_text}\n```", parse_mode="Markdown")
+        # ارسال کانفیگ بدون فرمت monospace و به صورت لینک قابل کلیک
+        await bot.send_message(user_id, f"✅ اشتراک {type_name} {plan} شما فعال شد!\n\n🔐 کانفیگ‌های شما:\n\n{configs_text}")
         return True
     return False
 
@@ -521,6 +523,11 @@ async def add_multiple_configs_to_pool(volume: int, configs: List[str], admin_id
             pass
     return success, len(configs) - success
 
+async def clear_config_pool():
+    """پاک کردن تمام کانفیگ‌های فروخته نشده از استخر"""
+    await db_execute("DELETE FROM config_pool WHERE is_sold = FALSE")
+    return True
+
 async def get_config_pool_stats():
     total = await db_execute("SELECT COUNT(*) FROM config_pool", fetchone=True)
     sold = await db_execute("SELECT COUNT(*) FROM config_pool WHERE is_sold = TRUE", fetchone=True)
@@ -540,7 +547,7 @@ async def get_config_pool_stats():
 
 async def get_all_configs():
     rows = await db_execute("SELECT id, volume, config_text, is_sold, sold_to_user, subscription_type FROM config_pool ORDER BY id DESC LIMIT 100", fetch=True)
-    return [{"id": r[0], "volume": r[1], "config_text": r[2][:50], "is_sold": r[3], "sold_to": r[4], "type": "اکونومی" if r[5] == "economy" else "سوپر فست"} for r in rows]
+    return [{"id": r[0], "volume": r[1], "config_text": r[2], "is_sold": r[3], "sold_to": r[4], "type": "اکونومی" if r[5] == "economy" else "سوپر فست"} for r in rows]
 
 async def get_pending_balance_payments():
     rows = await db_execute("SELECT id, user_id, amount, description FROM payments WHERE type = 'add_balance' AND status = 'pending'", fetch=True)
@@ -1124,13 +1131,43 @@ async def handle_admin_config(update, context, user_id, text):
         if not configs:
             await update.message.reply_text("📂 کانفیگی وجود ندارد", reply_markup=get_admin_config_keyboard())
             return
-        resp = "📋 لیست کانفیگ‌ها:\n\n"
+        resp = "📋 لیست کانفیگ‌ها:\n━━━━━━━━━━━━━━━━━━━━\n\n"
         for c in configs[:30]:
-            resp += f"🆔 {c['id']} | {persian_number(c['volume'])} گیگ {c['type']} | {'✅ فروخته' if c['is_sold'] else '📤 موجود'}\n"
+            status_text = "✅ فروخته شده" if c['is_sold'] else "📤 موجود"
+            # نمایش 100 کاراکتر اول کانفیگ
+            config_preview = c['config_text'][:100] + "..." if len(c['config_text']) > 100 else c['config_text']
+            resp += f"🆔 {c['id']} | {persian_number(c['volume'])} گیگ {c['type']}\n📊 وضعیت: {status_text}\n🔗 {config_preview}\n━━━━━━━━━━━━━━━━━━━━\n\n"
         await send_long_message(user_id, resp, context, reply_markup=get_admin_config_keyboard())
+    elif text == "🗑️ پاک کردن استخر کانفیگ":
+        # تاییدیه برای پاک کردن استخر
+        stats = await get_config_pool_stats()
+        if stats['available'] == 0:
+            await update.message.reply_text("⚠️ استخر کانفیگ در حال حاضر خالی است!", reply_markup=get_admin_config_keyboard())
+            return
+        user_states[user_id] = "admin_confirm_clear_pool"
+        await update.message.reply_text(
+            f"⚠️ هشدار! {persian_number(stats['available'])} کانفیگ فروخته نشده در استخر وجود دارد.\n\n"
+            f"آیا مطمئن هستید که می‌خواهید تمام کانفیگ‌های فروخته نشده را پاک کنید؟\n"
+            f"این عمل قابل بازگشت نیست!\n\n"
+            f"برای تایید عبارت «تایید» را وارد کنید:",
+            reply_markup=get_back_keyboard()
+        )
     elif text == "↩️ بازگشت به منو":
         await update.message.reply_text("🌐 منوی اصلی:", reply_markup=get_admin_main_keyboard())
         user_states.pop(user_id, None)
+
+async def handle_confirm_clear_pool(update, context, user_id, text):
+    if text == "تایید":
+        stats_before = await get_config_pool_stats()
+        await clear_config_pool()
+        await update.message.reply_text(
+            f"✅ استخر کانفیگ با موفقیت پاک شد!\n"
+            f"{persian_number(stats_before['available'])} کانفیگ حذف گردید.",
+            reply_markup=get_admin_config_keyboard()
+        )
+    else:
+        await update.message.reply_text("❌ عملیات لغو شد.", reply_markup=get_admin_config_keyboard())
+    user_states[user_id] = "admin_config"
 
 async def handle_admin_add_volume(update, context, user_id, state, text):
     volume_map = {f"{persian_number(i)} گیگ": i for i in range(1, 11)}
@@ -1561,6 +1598,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if state and state.startswith("admin_config_text_"):
             await handle_admin_config_text(update, context, user_id, state, text)
+            return
+        if state == "admin_confirm_clear_pool":
+            await handle_confirm_clear_pool(update, context, user_id, text)
             return
         if state == "admin_notification_type":
             await handle_notification_type(update, context, user_id, text)
