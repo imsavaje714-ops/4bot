@@ -682,18 +682,13 @@ async def fix_database_command(update, context):
         return
     
     try:
-        # اضافه کردن ستون coupon_code
         await db_execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS coupon_code TEXT")
         await update.message.reply_text("✅ ستون coupon_code با موفقیت به جدول payments اضافه شد")
-        
-        # همچنین بررسی سایر ستون‌های احتمالی
         try:
             await db_execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS description TEXT")
         except:
             pass
-            
         await update.message.reply_text("✅ دیتابیس با موفقیت تعمیر شد!", reply_markup=get_admin_main_keyboard())
-            
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {str(e)}", reply_markup=get_admin_main_keyboard())
 
@@ -755,7 +750,7 @@ async def check_membership_callback(update, context):
     else:
         await query.edit_message_text("❌ هنوز عضو نشده‌اید")
 
-# ==================== هندلر خرید اشتراک ====================
+# ==================== هندلر خرید اشتراک (اصلاح شده) ====================
 async def handle_buy_subscription(update, context, user_id, text):
     is_agent_user = await is_user_agent(user_id)
     
@@ -784,18 +779,38 @@ async def handle_buy_subscription(update, context, user_id, text):
     # تشخیص حجم و نوع از دکمه
     volume, sub_type = extract_volume_and_type(text)
     if volume and sub_type:
-        state = user_states.get(user_id)
-        expected_type = "economy" if state == "awaiting_economy_volume" else "superfast" if state == "awaiting_superfast_volume" else None
-        if expected_type and expected_type == sub_type:
-            user_states[user_id] = f"awaiting_quantity_{volume}_{sub_type}"
-            await update.message.reply_text(
-                f"✅ {persian_number(volume)} گیگ {CONFIG_NAME}\n💰 قیمت هر عدد: {format_price(get_price_for_volume(volume, 1, is_agent_user, sub_type))}\n\n🔢 تعداد مورد نیاز را وارد کنید:",
-                reply_markup=get_back_keyboard()
-            )
+        current_state = user_states.get(user_id)
+        # بررسی می‌کنیم که کاربر در مرحله انتخاب حجم باشد
+        if current_state in ["awaiting_economy_volume", "awaiting_superfast_volume"]:
+            expected_type = "economy" if current_state == "awaiting_economy_volume" else "superfast"
+            if expected_type == sub_type:
+                user_states[user_id] = f"awaiting_quantity_{volume}_{sub_type}"
+                await update.message.reply_text(
+                    f"✅ {persian_number(volume)} گیگ {CONFIG_NAME}\n💰 قیمت هر عدد: {format_price(get_price_for_volume(volume, 1, is_agent_user, sub_type))}\n\n🔢 تعداد مورد نیاز را وارد کنید:",
+                    reply_markup=get_back_keyboard()
+                )
+                return
+            else:
+                # اگر نوع اشتباه انتخاب شده، دوباره منوی صحیح را نشان بده
+                await update.message.reply_text(
+                    f"⚠️ لطفاً از دکمه‌های { 'اکونومی' if current_state == 'awaiting_economy_volume' else 'سوپر فست' } استفاده کنید.", 
+                    reply_markup=get_subscription_keyboard(is_agent_user, expected_type)
+                )
+                return
         else:
-            await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_subscription_keyboard(is_agent_user, sub_type))
+            # اگر state نامعتبر است، به منوی اصلی برگردان
+            await update.message.reply_text(
+                "⚠️ لطفاً ابتدا نوع اشتراک را انتخاب کنید:", 
+                reply_markup=get_subscription_type_keyboard()
+            )
+            return
     else:
-        await update.message.reply_text("⚠️ لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=get_main_keyboard(is_agent_user))
+        # اگر متن انتخاب شده مربوط به دکمه‌های حجم نبود
+        await update.message.reply_text(
+            "⚠️ لطفاً از دکمه‌های منو استفاده کنید.", 
+            reply_markup=get_subscription_type_keyboard()
+        )
+        return
 
 async def handle_quantity(update, context, user_id, state, text):
     try:
@@ -1064,10 +1079,8 @@ async def admin_callback(update, context):
             await query.edit_message_text("⚠️ پرداخت یافت نشد")
             return
         
-        # فقط دکمه‌ها را حذف کن (بدون ویرایش متن - چون پیام عکس است)
         await query.edit_message_reply_markup(reply_markup=None)
         
-        # ارسال پیام جدید به جای ویرایش متن عکس
         await context.bot.send_message(
             chat_id=update.effective_user.id,
             text=f"✅ پرداخت {payment_id} تایید شد"
@@ -1084,15 +1097,12 @@ async def admin_callback(update, context):
                 await send_multiple_configs_to_user(sub[0], uid, sub[1], sub[2], desc, context.bot, sub[3])
         
         elif ptype == "add_balance":
-            # بررسی می‌کنیم که کاربر وجود دارد
             user_exists = await db_execute("SELECT user_id FROM users WHERE user_id = %s", (uid,), fetchone=True)
             if not user_exists:
                 await db_execute("INSERT INTO users (user_id, username, balance) VALUES (%s, %s, %s)", (uid, "unknown", 0))
             
-            # اضافه کردن موجودی
             await add_balance(uid, amt)
             
-            # ارسال پیام تایید به کاربر و ادمین
             await context.bot.send_message(uid, f"✅ موجودی شما {format_price(amt)} افزایش یافت (کد: {payment_id})")
             await context.bot.send_message(update.effective_user.id, f"✅ موجودی کاربر {uid} به میزان {format_price(amt)} افزایش یافت")
             logging.info(f"Balance added: {amt} to user {uid} by admin {update.effective_user.id}")
@@ -1107,7 +1117,6 @@ async def admin_callback(update, context):
         payment_id = int(data.split("_")[1])
         payment = await db_execute("SELECT user_id FROM payments WHERE id = %s", (payment_id,), fetchone=True)
         
-        # فقط دکمه‌ها را حذف کن
         await query.edit_message_reply_markup(reply_markup=None)
         
         if payment:
@@ -1740,7 +1749,7 @@ application.add_handler(CommandHandler("shutdown", shutdown_command))
 application.add_handler(CommandHandler("startup", startup_command))
 application.add_handler(CommandHandler("debug", debug_subscriptions_command))
 application.add_handler(CommandHandler("toggle", toggle_status_command))
-application.add_handler(CommandHandler("fixdb", fix_database_command))  # دستور تعمیر دیتابیس
+application.add_handler(CommandHandler("fixdb", fix_database_command))
 application.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), message_handler))
 application.add_handler(CallbackQueryHandler(admin_callback))
 
